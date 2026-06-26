@@ -33,10 +33,7 @@ class DatabaseHelper {
 
   // Veritabanı versiyonu yükseldiğinde mevcut tabloya yeni sütunu ekler
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 3) {
-      // Not: SQLite'ta mevcut tabloya doğrudan ON DELETE CASCADE eklenemez.
-      // Bu yüzden en sağlıklı yöntem uygulamayı temiz kurmaktır (Bkz. 3. Adım).
-    }
+    if (oldVersion < 3) {}
   }
 
   Future<void> _onCreate(Database db, int version) async {
