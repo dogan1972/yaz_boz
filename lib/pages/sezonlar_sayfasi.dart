@@ -259,7 +259,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                             ? Padding(
                                 padding: const EdgeInsets.only(top: 4.0),
                                 child: Text(
-                                  "🏆 Sezon Sampiyonu: ${tekSezon.sezonSampiyon}",
+                                  "🏆 Sezon Şampiyonu: ${tekSezon.sezonSampiyon}",
                                   style: const TextStyle(
                                     color: Colors.green,
                                     fontWeight: FontWeight.bold,
@@ -389,13 +389,13 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                   builder: (dialogContext) => AlertDialog(
                                     title: const Text('Sezonu Sil'),
                                     content: const Text(
-                                      'Bu sezonu sildiginizde sezona ait tum kayitlar kaybolacaktir. Onayliyor musunuz?',
+                                      'Bu sezonu sildiğinizde sezona ait tüm kayıtlar kaybolacaktır. Onaylıyor musunuz?',
                                     ),
                                     actions: [
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.pop(dialogContext, false),
-                                        child: const Text('Iptal'),
+                                        child: const Text('İptal'),
                                       ),
                                       TextButton(
                                         onPressed: () =>
@@ -451,7 +451,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                 ),
                 label: Text(
                   _gosterArsiv
-                      ? "Aktif Sezonlara Don"
+                      ? "Aktif Sezonlara Dön"
                       : "Eski Sezonlar (Arsiv)",
                   style: const TextStyle(
                     color: Colors.black87,

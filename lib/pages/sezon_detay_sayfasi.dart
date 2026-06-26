@@ -234,7 +234,7 @@ class _SezonDetaySayfasiState extends State<SezonDetaySayfasi> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.sezonAdi} Detaylari'),
+        title: Text('${widget.sezonAdi} Detayları'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -244,10 +244,10 @@ class _SezonDetaySayfasiState extends State<SezonDetaySayfasi> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
-            return Center(child: Text('Hata olustu: ${snapshot.error}'));
+            return Center(child: Text('Hata oluştu: ${snapshot.error}'));
           } else if (!snapshot.hasData) {
             return const Center(
-              child: Text('Istatistik verileri yuklenemedi.'),
+              child: Text('İstatistik verileri yüklenemedi.'),
             );
           }
 
@@ -343,7 +343,7 @@ class _SezonDetaySayfasiState extends State<SezonDetaySayfasi> {
 
                 const SizedBox(height: 24),
                 const Text(
-                  "Sezon Oyuncu Istatistikleri (Oynadi/Kazandi/Kaybetti)",
+                  "Sezon Oyuncu İstatistikleri (Oynadı/Kazandı/Kaybetti)",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -407,7 +407,7 @@ class _SezonDetaySayfasiState extends State<SezonDetaySayfasi> {
                                 Padding(
                                   padding: EdgeInsets.all(8.0),
                                   child: Text(
-                                    'Oynadi',
+                                    'Oynadı',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
@@ -418,7 +418,7 @@ class _SezonDetaySayfasiState extends State<SezonDetaySayfasi> {
                                 Padding(
                                   padding: EdgeInsets.all(8.0),
                                   child: Text(
-                                    'Kazandi',
+                                    'Kazandı',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,

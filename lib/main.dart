@@ -146,7 +146,7 @@ class AnaSayfa extends StatelessWidget {
             _dashboardButonuOlustur(
               icon: Icons.style,
               renk: Colors.teal,
-              baslik: "Yaz Boz Tahtasi",
+              baslik: "Yaz Boz Tahtası",
               altBaslik: "Skor ve el girisleri",
               onTap: () async {
                 final aktifOyun = await Oyun.enSonAktifOyunuGetir();
@@ -167,7 +167,7 @@ class AnaSayfa extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                        "⚠️ Devam eden aktif bir oyun bulunamadi! Once 'Oyunlar' menusunden yeni bir oyun acin.",
+                        "⚠️ Devam eden aktif bir oyun bulunamadı! Önce 'Oyunlar' menüsünden yeni bir oyun açın.",
                       ),
                       backgroundColor: Colors.orangeAccent,
                     ),
@@ -180,7 +180,7 @@ class AnaSayfa extends StatelessWidget {
               icon: Icons.people,
               renk: Colors.blue,
               baslik: "Oyuncular",
-              altBaslik: "Masadaki katilimcilar",
+              altBaslik: "Masadaki katılımcılar",
               onTap: () {
                 Navigator.push(
                   context,

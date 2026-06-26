@@ -90,7 +90,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(oyun == null ? 'Yeni Oyun Baslat' : 'Oyunu Duzenle'),
+          title: Text(oyun == null ? 'Yeni Oyun Başlat' : 'Oyunu Düzenle'),
           content: SizedBox(
             width: MediaQuery.of(context).size.width * 0.9,
             child: SingleChildScrollView(
@@ -240,7 +240,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                   if (_formdaSeciliOyuncular.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     const Text(
-                      "Masadaki Oturma Duzeni (Siralama):",
+                      "Masadaki Oturma Düzeni (Sıralama):",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -337,8 +337,8 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                     ),
                     subtitle: Text(
                       _isHighestWins
-                          ? "En yuksek skor birinci olur"
-                          : "En dusuk skor birinci olur",
+                          ? "En yüksek skor birinci olur"
+                          : "En düşük skor birinci olur",
                       style: const TextStyle(fontSize: 12),
                     ),
                     value: _isHighestWins,
@@ -404,7 +404,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                 navigator.pop();
                 _verileriYenile();
               },
-              child: const Text('Baslat'),
+              child: const Text('Başlat'),
             ),
           ],
         ),
@@ -435,7 +435,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                 } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                   return const Center(
                     child: Text(
-                      'Henuz oyun baslatilmamis.',
+                      'Henüz oyun başlatılmamış.',
                       style: TextStyle(color: Colors.grey),
                     ),
                   );
@@ -452,7 +452,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                   return Center(
                     child: Text(
                       _gosterArsiv
-                          ? 'Arsivde hic oyun bulunmuyor.'
+                          ? 'Arşivde hiç oyun bulunmuyor.'
                           : 'Aktif (devam eden) oyun bulunmuyor.',
                       style: const TextStyle(color: Colors.grey),
                     ),
@@ -540,7 +540,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                   builder: (dialogContext) => AlertDialog(
                                     title: const Text('Oyunu Sil'),
                                     content: const Text(
-                                      'Bu oyunu sildiginizde oyuna ait girilmis tum eller de silinecektir. Onayliyor musunuz?',
+                                      'Bu oyunu sildiğinizde oyuna ait girilmiş tüm eller de silinecektir. Onaylıyor musunuz?',
                                     ),
                                     actions: [
                                       TextButton(
@@ -607,7 +607,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                   color: Colors.black87,
                 ),
                 label: Text(
-                  _gosterArsiv ? "Aktif Oyunlara Don" : "Eski Oyunlar (Arsiv)",
+                  _gosterArsiv ? "Aktif Oyunlara Dön" : "Eski Oyunlar (Arşiv)",
                   style: const TextStyle(
                     color: Colors.black87,
                     fontWeight: FontWeight.bold,
@@ -631,7 +631,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
-                  "Oyun baslatabilmek icin once bir turnuva olusturmalisiniz!",
+                  "Oyun başlatabilmek icin önce bir turnuva oluşturmalısınız!",
                 ),
               ),
             );
