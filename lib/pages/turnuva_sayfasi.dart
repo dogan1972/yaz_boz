@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:yaz_boz/helper/database_helper.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Turnuva veri yapısı modeli (Veritabanı kolonlarınızla tam senkronize)
 class Turnuva {
@@ -74,6 +75,16 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
     return List.generate(maps.length, (i) => Turnuva.fromMap(maps[i]));
   }
 
+  // 🚀 SADECE AKTİF SEZONLARI KONTROL EDEN MOTOR
+  Future<bool> _aktifSezonVarMi() async {
+    final db = await DatabaseHelper().database;
+    final List<Map<String, dynamic>> maps = await db.query('sezonlar');
+    final aktifSezonlar = maps
+        .where((s) => s['sezonSampiyon'] == null)
+        .toList();
+    return aktifSezonlar.isNotEmpty;
+  }
+
   void _turnuvaFormuGoster({Turnuva? turnuva}) {
     if (turnuva != null) {
       _tarihController.text = turnuva.turTarih;
@@ -133,22 +144,18 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
               final db = await DatabaseHelper().database;
 
               if (turnuva == null) {
-                // 🚀 HATA ÇÖZÜMÜ: En son oluşturulan aktif sezonun ID'sini otomatik sorguluyoruz
                 final List<Map<String, dynamic>> enSonSezonRes = await db.query(
                   'sezonlar',
                   orderBy: 'sezonId DESC',
                   limit: 1,
                 );
 
-                // Eğer veritabanında hiç sezon yoksa kilitlenmeyi önlemek için varsayılan 1 atıyoruz
                 int aktifSezonId = enSonSezonRes.isNotEmpty
                     ? enSonSezonRes.first['sezonId'] as int
                     : 1;
 
-                // 🎯 KRİTİK ADIM: 'sezonId' veritabanı şemasının zorunlu kuralına uygun olarak ekleniyor
                 final yeniTurnuva = {
-                  'sezonId':
-                      aktifSezonId, // 👈 NOT NULL hatasını çözen zorunlu kolon
+                  'sezonId': aktifSezonId,
                   'turTarih': _tarihController.text.trim(),
                   'turKazanan': null,
                   'turKaybeden': null,
@@ -157,7 +164,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
 
                 await db.insert('turnuva', yeniTurnuva);
               } else {
-                // Düzenleme (Edit) modu alanı aynen kalıyor
                 final guncelTurnuva = Turnuva(
                   turId: turnuva.turId,
                   turTarih: _tarihController.text.trim(),
@@ -188,13 +194,12 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
     );
   }
 
-  // 🚀 ASLA BOŞ KALMAYAN GELİŞMİŞ İSTATİSTİK MOTORU
+  // 🚀 ASLA BOŞ KALMAYAN TURNUVA SONU HESAPLAMA MOTORU
   Future<Map<String, String?>> _turnuvaIstatistikleriniHesapla(
     int turnuvaId,
   ) async {
     final db = await DatabaseHelper().database;
 
-    // 1. En çok oyun kazanan oyuncuyu buluyoruz
     final List<Map<String, dynamic>> kazananRes = await db.rawQuery(
       '''
       SELECT oyunKazanan, COUNT(oyunKazanan) as adet 
@@ -207,7 +212,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       [turnuvaId],
     );
 
-    // 2. En çok oyun kaybeden oyuncuyu buluyoruz
     final List<Map<String, dynamic>> kaybedenRes = await db.rawQuery(
       '''
       SELECT oyunKaybeden, COUNT(oyunKaybeden) as adet 
@@ -230,8 +234,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       otomatikKaybeden = kaybedenRes.first['oyunKaybeden'].toString();
     }
 
-    // 🎯 YEDEK PLAN MOTORU: Eğer üstteki oyunlar tablosunda kaybeden kolonları doldurulmadıysa,
-    // turnuvadaki tüm ellerin (eller tablosunun) puanlarını toplar ve en çok ceza puanı biriktiren sonuncuyu bulur.
     if (otomatikKaybeden == null || otomatikKaybeden.isEmpty) {
       final List<Map<String, dynamic>> yedekKaybedenRes = await db.rawQuery(
         '''
@@ -251,7 +253,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       }
     }
 
-    // 🎯 YEDEK PLAN KAZANAN (Önlem amaçlı): Kazanan da boş kalırsa en az puan alanı bulur
     if (otomatikKazanan == null || otomatikKazanan.isEmpty) {
       final List<Map<String, dynamic>> yedekKazananRes = await db.rawQuery(
         '''
@@ -272,6 +273,37 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
     }
 
     return {'enCokKazanan': otomatikKazanan, 'enCokKaybeden': otomatikKaybeden};
+  }
+
+  // Hero tasarımı için buton yardımcı bileşeni
+  Widget _heroAksiyonButonu({
+    required IconData icon,
+    required Color renk,
+    required String etiket,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: renk, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              etiket,
+              style: TextStyle(
+                color: renk.withValues(alpha: 0.9),
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -303,7 +335,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                   );
                 }
 
-                // Aktif/Arşiv filtreleme motoru (Linter standartlarına tam uyumlu)
                 final tumTurnuvalar = snapshot.data!;
                 final turnuvalarListesi = tumTurnuvalar.where((t) {
                   return _gosterArsiv
@@ -322,236 +353,414 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                   );
                 }
 
-                return ListView.builder(
-                  itemCount: turnuvalarListesi.length,
-                  padding: const EdgeInsets.all(8),
-                  itemBuilder: (itemContext, index) {
-                    final tekTurnuva = turnuvalarListesi[index];
-                    return Card(
-                      elevation: 3,
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.emoji_events,
-                          color: _gosterArsiv
-                              ? Colors.blueGrey
-                              : Colors.amber.shade700,
-                          size: 32,
-                        ),
-                        title: Text(
-                          "Turnuva #${tekTurnuva.turId} - ${tekTurnuva.turTarih}",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: tekTurnuva.turKazanan != null
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 4.0),
-                                child: Text(
-                                  "🏆 Kazanan: ${tekTurnuva.turKazanan}  |  📉 Sonuncu: ${tekTurnuva.turKaybeden}",
-                                  style: const TextStyle(
-                                    color: Colors.teal,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              )
-                            : const Padding(
-                                padding: EdgeInsets.only(top: 4.0),
-                                child: Text(
-                                  "🔥 Turnuva devam ediyor...",
-                                  style: TextStyle(
-                                    color: Colors.blueGrey,
-                                    fontSize: 13,
-                                  ),
-                                ),
+                // 📊 1. GÖRÜNÜM: ESKİ TURNUVALAR (ARŞİV) MODUNDA LİSTE HALİNDE GÖSTERİLİR
+                if (_gosterArsiv) {
+                  return ListView.builder(
+                    itemCount: turnuvalarListesi.length,
+                    padding: const EdgeInsets.all(8),
+                    itemBuilder: (itemContext, index) {
+                      final tekTurnuva = turnuvalarListesi[index];
+                      return Card(
+                        elevation: 3,
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.emoji_events,
+                            color: Colors.blueGrey,
+                            size: 32,
+                          ),
+                          title: Text(
+                            "Turnuva #${tekTurnuva.turId} - ${tekTurnuva.turTarih}",
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Text(
+                              "🏆 Kazanan: ${tekTurnuva.turKazanan} | 📉 Sonuncu: ${tekTurnuva.turKaybeden}",
+                              style: const TextStyle(
+                                color: Colors.teal,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
                               ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 🚀 GÜNCELLEME: TURNUVA SONLANDIRMA BUTONU (OTOMATİK OYUNCU GELECEK ŞEKİLDE YENİLENDİ)
-                            if (tekTurnuva.turKazanan == null)
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               IconButton(
                                 icon: const Icon(
-                                  Icons.gavel,
-                                  color: Colors.teal,
+                                  Icons.edit,
+                                  color: Colors.orange,
                                 ),
-                                tooltip: 'Turnuvayı Sonlandır',
+                                onPressed: () =>
+                                    _turnuvaFormuGoster(turnuva: tekTurnuva),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () async {
-                                  final messenger = ScaffoldMessenger.of(
-                                    context,
-                                  );
-
-                                  // 🎯 KRİTİK ADIM: Pop-up açılmadan önce arka planda en çok kazanan/kaybeden hesaplanır
-                                  final istatistikler =
-                                      await _turnuvaIstatistikleriniHesapla(
-                                        tekTurnuva.turId!,
-                                      );
-
-                                  if (!context.mounted) return;
-
-                                  Map<String, String>?
-                                  sonuc = await showDialog<Map<String, String>>(
-                                    context: context,
-                                    builder: (dialogContext) {
-                                      final TextEditingController
-                                      tempKazananCtrl = TextEditingController(
-                                        text:
-                                            istatistikler['enCokKazanan'] ??
-                                            '', // En çok kazanan otomatik doldurulur
-                                      );
-                                      final TextEditingController
-                                      tempKaybedenCtrl = TextEditingController(
-                                        text:
-                                            istatistikler['enCokKaybeden'] ??
-                                            '', // En çok kaybeden otomatik doldurulur
-                                      );
-
-                                      return AlertDialog(
-                                        title: const Row(
-                                          children: [
-                                            Icon(
-                                              Icons.stars,
-                                              color: Colors.amber,
-                                            ),
-                                            SizedBox(width: 8),
-                                            Text('Turnuvayı Bitir'),
-                                          ],
-                                        ),
-                                        content: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            TextField(
-                                              controller: tempKazananCtrl,
-                                              decoration: const InputDecoration(
-                                                labelText: 'Turnuva Kazananı',
-                                                border: OutlineInputBorder(),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 12),
-                                            TextField(
-                                              controller: tempKaybedenCtrl,
-                                              decoration: const InputDecoration(
-                                                labelText: 'Turnuva Sonuncusu',
-                                                border: OutlineInputBorder(),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(
-                                              dialogContext,
-                                              null,
-                                            ),
-                                            child: const Text('İptal'),
+                                  bool? onay = await showDialog<bool>(
+                                    context: itemContext,
+                                    builder: (dialogContext) => AlertDialog(
+                                      title: const Text('Turnuvayı Sil'),
+                                      content: const Text(
+                                        'Bu turnuvayı sildiğinizde turnuvaya ait tüm kayıtlar kaybolacaktır. Onaylıyor musunuz?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            false,
                                           ),
-                                          ElevatedButton(
-                                            onPressed: () {
-                                              if (tempKazananCtrl.text
-                                                      .trim()
-                                                      .isNotEmpty &&
-                                                  tempKaybedenCtrl.text
-                                                      .trim()
-                                                      .isNotEmpty) {
-                                                Navigator.pop(dialogContext, {
-                                                  'kazanan': tempKazananCtrl
-                                                      .text
-                                                      .trim(),
-                                                  'kaybeden': tempKaybedenCtrl
-                                                      .text
-                                                      .trim(),
-                                                });
-                                              }
-                                            },
-                                            child: const Text('Bitir'),
+                                          child: const Text('İptal'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            true,
                                           ),
-                                        ],
-                                      );
-                                    },
+                                          child: const Text(
+                                            'Sil',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   );
-
-                                  if (sonuc != null) {
+                                  if (onay == true) {
                                     final db = await DatabaseHelper().database;
-                                    await db.update(
+                                    await db.delete(
                                       'turnuva',
-                                      {
-                                        'turKazanan': sonuc['kazanan'],
-                                        'turKaybeden': sonuc['kaybeden'],
-                                        'tursonuc':
-                                            1, // Turnuva pasife (arşive) çekilir
-                                      },
                                       where: 'turId = ?',
                                       whereArgs: [tekTurnuva.turId],
-                                    );
-
-                                    messenger.showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          "🎉 Turnuva #${tekTurnuva.turId} Sonuçlandı!\n🏆 Kazanan: ${sonuc['kazanan']} | 📉 Sonuncu: ${sonuc['kaybeden']}",
-                                        ),
-                                        backgroundColor: Colors.teal.shade800,
-                                      ),
                                     );
                                     _verileriYenile();
                                   }
                                 },
                               ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }
 
-                            IconButton(
-                              icon: const Icon(
-                                Icons.edit,
-                                color: Colors.orange,
-                              ),
-                              onPressed: () =>
-                                  _turnuvaFormuGoster(turnuva: tekTurnuva),
+                // 🚀 2. GÖRÜNÜM: AKTİF TURNUVA MODUNDA EKRANIN DEVASAL 2/3 ALANINI KAPLAYAN HERO KART TASARIMI
+                final tekTurnuva = turnuvalarListesi
+                    .first; // Eş zamanlı tek aktif turnuva gelebilir
+                final double ekranYuksekligi = MediaQuery.of(
+                  context,
+                ).size.height;
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 24.0,
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        height: ekranYuksekligi * 0.55,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.purple.shade600,
+                              Colors.indigo.shade900,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(24.0),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.indigo.withValues(alpha: 0.3),
+                              blurRadius: 16,
+                              offset: const Offset(0, 8),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () async {
-                                bool? onay = await showDialog<bool>(
-                                  context: itemContext,
-                                  builder: (dialogContext) => AlertDialog(
-                                    title: const Text('Turnuvayı Sil'),
-                                    content: const Text(
-                                      'Bu turnuvayı sildiğinizde turnuvaya bağlı tüm kayıtlar kaybolacaktır. Onaylıyor musunuz?',
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(dialogContext, false),
-                                        child: const Text('İptal'),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Üst Başlık ve İkon Alanı
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "Turnuva #${tekTurnuva.turId}",
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                          letterSpacing: 1.1,
+                                        ),
                                       ),
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(dialogContext, true),
-                                        child: const Text(
-                                          'Sil',
-                                          style: TextStyle(color: Colors.red),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        tekTurnuva.turTarih,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 26,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
                                     ],
                                   ),
-                                );
-
-                                if (onay == true) {
-                                  final db = await DatabaseHelper().database;
-                                  await db.delete(
-                                    'turnuva',
-                                    where: 'turId = ?',
-                                    whereArgs: [tekTurnuva.turId],
-                                  );
-                                  _verileriYenile();
-                                }
-                              },
-                            ),
-                          ],
+                                  const CircleAvatar(
+                                    radius: 28,
+                                    backgroundColor: Colors.white24,
+                                    child: Icon(
+                                      Icons.emoji_events,
+                                      color: Colors.white,
+                                      size: 30,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // Orta Canlı Bilgilendirme ve Efekt Alanı
+                              const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.local_fire_department,
+                                    color: Colors.orangeAccent,
+                                    size: 54,
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    "TURNUVA DEVAM EDİYOR",
+                                    style: TextStyle(
+                                      color: Colors.orangeAccent,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    "Masada kıyasıya rekabet tüm hızıyla sürüyor.\nSkorları oyunlar listesinden takip edebilirsiniz.",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 13,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // Alt İşlem Butonları Barı
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _heroAksiyonButonu(
+                                      icon: Icons.share,
+                                      renk: Colors.cyanAccent,
+                                      etiket: "Paylaş",
+                                      onTap: () async {
+                                        String paylasimMetni =
+                                            "🔥 YAZ BOZ TURNUVASI DEVAM EDİYOR 🔥\n"
+                                            "📅 Tarih: ${tekTurnuva.turTarih}\n"
+                                            "🆔 Turnuva No: #${tekTurnuva.turId}\n"
+                                            "-----------------------------------\n"
+                                            "Masada rekabet tam gaz sürüyor! Güncel skorlar için uygulamayı takip edin. ⚡";
+                                        final Uri whatsappUrl = Uri.parse(
+                                          "whatsapp://send?text=${Uri.encodeComponent(paylasimMetni)}",
+                                        );
+                                        if (await canLaunchUrl(whatsappUrl)) {
+                                          await launchUrl(
+                                            whatsappUrl,
+                                            mode:
+                                                LaunchMode.externalApplication,
+                                          );
+                                        } else {
+                                          final Uri webUrl = Uri.parse(
+                                            "whatsapp.com{Uri.encodeComponent(paylasimMetni)}",
+                                          );
+                                          await launchUrl(
+                                            webUrl,
+                                            mode:
+                                                LaunchMode.externalApplication,
+                                          );
+                                        }
+                                      },
+                                    ),
+                                    _heroAksiyonButonu(
+                                      icon: Icons.gavel,
+                                      renk: Colors.amber,
+                                      etiket: "Sonlandır",
+                                      onTap: () async {
+                                        final messenger = ScaffoldMessenger.of(
+                                          context,
+                                        );
+                                        final sonuclar =
+                                            await _turnuvaIstatistikleriniHesapla(
+                                              tekTurnuva.turId!,
+                                            );
+                                        if (!context.mounted) return;
+                                        showDialog(
+                                          context: context,
+                                          builder: (dialogContext) {
+                                            final TextEditingController
+                                            tempKazananCtrl =
+                                                TextEditingController(
+                                                  text:
+                                                      sonuclar['enCokKazanan'] ??
+                                                      '',
+                                                );
+                                            final TextEditingController
+                                            tempKaybedenCtrl =
+                                                TextEditingController(
+                                                  text:
+                                                      sonuclar['enCokKaybeden'] ??
+                                                      '',
+                                                );
+                                            return AlertDialog(
+                                              title: const Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.gavel,
+                                                    color: Colors.amber,
+                                                  ),
+                                                  SizedBox(width: 8),
+                                                  Text('Turnuvayı Sonlandır'),
+                                                ],
+                                              ),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  TextField(
+                                                    controller: tempKazananCtrl,
+                                                    decoration: const InputDecoration(
+                                                      labelText:
+                                                          'Turnuva Şampiyonu Kim?',
+                                                      border:
+                                                          OutlineInputBorder(),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  TextField(
+                                                    controller:
+                                                        tempKaybedenCtrl,
+                                                    decoration: const InputDecoration(
+                                                      labelText:
+                                                          'Turnuva Sonuncusu Kim?',
+                                                      border:
+                                                          OutlineInputBorder(),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(
+                                                        dialogContext,
+                                                      ),
+                                                  child: const Text('İptal'),
+                                                ),
+                                                ElevatedButton(
+                                                  onPressed: () async {
+                                                    if (tempKazananCtrl.text
+                                                            .trim()
+                                                            .isNotEmpty &&
+                                                        tempKaybedenCtrl.text
+                                                            .trim()
+                                                            .isNotEmpty) {
+                                                      final db =
+                                                          await DatabaseHelper()
+                                                              .database;
+                                                      await db.update(
+                                                        'turnuva',
+                                                        {
+                                                          'turKazanan':
+                                                              tempKazananCtrl
+                                                                  .text
+                                                                  .trim(),
+                                                          'turKaybeden':
+                                                              tempKaybedenCtrl
+                                                                  .text
+                                                                  .trim(),
+                                                          'tursonuc': 1,
+                                                        },
+                                                        where: 'turId = ?',
+                                                        whereArgs: [
+                                                          tekTurnuva.turId,
+                                                        ],
+                                                      );
+                                                      if (!dialogContext
+                                                          .mounted) {
+                                                        return;
+                                                      }
+                                                      Navigator.pop(
+                                                        dialogContext,
+                                                      );
+                                                      messenger.showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                            "🏆 Turnuva #${tekTurnuva.turId} Sonlandırıldı! Şampiyon: ${tempKazananCtrl.text.trim()}",
+                                                          ),
+                                                          backgroundColor:
+                                                              Colors
+                                                                  .indigo
+                                                                  .shade800,
+                                                        ),
+                                                      );
+                                                      _verileriYenile();
+                                                    }
+                                                  },
+                                                  child: const Text(
+                                                    'Sonlandır',
+                                                  ),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                    _heroAksiyonButonu(
+                                      icon: Icons.edit,
+                                      renk: Colors.white,
+                                      etiket: "Düzenle",
+                                      onTap: () => _turnuvaFormuGoster(
+                                        turnuva: tekTurnuva,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 );
               },
             ),
           ),
+          // Alt panel görünüm değiştirme butonu
           Padding(
             padding: const EdgeInsets.only(
               left: 16.0,
@@ -592,8 +801,50 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
           ),
         ],
       ),
+      // Eş zamanlı tek aktif turnuva kontrol bariyerli buton (Linter / Async emniyetli)
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _turnuvaFormuGoster(),
+        onPressed: () async {
+          final messenger = ScaffoldMessenger.of(context);
+
+          final bool sezonKontrol = await _aktifSezonVarMi();
+          if (!context.mounted) return;
+
+          if (!sezonKontrol) {
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "⚠️ Sistemde devam eden aktif bir sezon bulunmuyor! Yeni turnuva açabilmek için önce 'Sezonlar' sayfasından yeni bir sezon başlatmalısınız.",
+                ),
+                backgroundColor: Colors.orangeAccent,
+                duration: Duration(seconds: 4),
+              ),
+            );
+            return;
+          }
+
+          final db = await DatabaseHelper().database;
+          final List<Map<String, dynamic>> aktifTurnuvalar = await db.query(
+            'turnuva',
+            where: 'turKazanan IS NULL',
+          );
+
+          if (!context.mounted) return;
+
+          if (aktifTurnuvalar.isNotEmpty) {
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "⚠️ Masada zaten devam eden AKTİF BİR TURNUVA bulunuyor! Yenisini açmak için önce mevcut turnuvayı bitirmelisiniz.",
+                ),
+                backgroundColor: Colors.orangeAccent,
+                duration: Duration(seconds: 4),
+              ),
+            );
+            return;
+          }
+
+          _turnuvaFormuGoster();
+        },
         backgroundColor: Colors.blue,
         child: const Icon(Icons.add, color: Colors.white),
       ),

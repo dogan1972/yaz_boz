@@ -314,7 +314,7 @@ class _SezonDetaySayfasiState extends State<SezonDetaySayfasi> {
                   icon: Icons.tag,
                   renk: Colors.purple,
                   baslik: "Toplam Oynanan Oyun",
-                  deger: "${data['toplamOyun']} Mac",
+                  deger: "${data['toplamOyun']} Maç",
                 ),
                 _detayKartiOlustur(
                   icon: Icons.emoji_events,
