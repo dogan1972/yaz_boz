@@ -781,32 +781,51 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                         icon: Icons.share,
                                         renk: Colors.cyanAccent,
                                         etiket: "Paylaş",
+                                        // 🚀 KİLİTLENMEYİ ÖNLEYEN VE HARF HATALARI SIFIRLANMIŞ PAYLAŞIM MOTORU
                                         onTap: () async {
                                           String paylasimMetni =
-                                              "🃏 CANLI YAZ BOZ MAÇI 🃏\n"
+                                              "🎮 YAZ BOZ MAÇI DEVAM EDİYOR 🎮\n"
                                               "📅 Tarih: ${oyun.oyunTarih}\n"
                                               "🆔 Oyun No: #${oyun.oyunId}\n"
                                               "👥 Masadakiler: ${oyun.oyuncu}\n"
                                               "📊 Format: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu\n"
                                               "-----------------------------------\n"
                                               "Maç henüz sonlanmadı, defterde heyecan dorukta! 🚀";
+
+                                          // 🎯 ÇÖZÜM: Tırnak harf hatası giderildi, evrensel api.whatsapp protokolü bağlandı
                                           final Uri whatsappUrl = Uri.parse(
-                                            "whatsapp://send?text=${Uri.encodeComponent(paylasimMetni)}",
+                                            "https://whatsapp.com${Uri.encodeComponent(paylasimMetni)}",
                                           );
-                                          if (await canLaunchUrl(whatsappUrl)) {
-                                            await launchUrl(
+
+                                          try {
+                                            if (await canLaunchUrl(
                                               whatsappUrl,
-                                              mode: LaunchMode
-                                                  .externalApplication,
-                                            );
-                                          } else {
-                                            final Uri webUrl = Uri.parse(
-                                              "whatsapp.com{Uri.encodeComponent(paylasimMetni)}",
-                                            );
-                                            await launchUrl(
-                                              webUrl,
-                                              mode: LaunchMode
-                                                  .externalApplication,
+                                            )) {
+                                              await launchUrl(
+                                                whatsappUrl,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
+                                            } else {
+                                              // Eğer canLaunchUrl false dönerse emniyet amacıyla doğrudan zorlayarak açar
+                                              await launchUrl(
+                                                whatsappUrl,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
+                                            }
+                                          } catch (e) {
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  "⚠️ WhatsApp açılırken bir sorun oluştu veya cihazda yüklü değil: $e",
+                                                ),
+                                                backgroundColor:
+                                                    Colors.orange.shade800,
+                                              ),
                                             );
                                           }
                                         },

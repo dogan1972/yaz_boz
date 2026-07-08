@@ -595,7 +595,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                           );
                                         } else {
                                           final Uri webUrl = Uri.parse(
-                                            "whatsapp.com{Uri.encodeComponent(paylasimMetni)}",
+                                            "https://whatsapp.com\${Uri.encodeComponent(paylasimMetni)}",
                                           );
                                           await launchUrl(
                                             webUrl,
