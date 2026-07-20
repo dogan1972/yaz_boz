@@ -74,14 +74,14 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(sezon == null ? 'Yeni Sezon Ekle' : 'Sezonu Duzenle'),
+        title: Text(sezon == null ? 'Yeni Sezon Ekle' : 'Sezonu Düzenle'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _tarihController,
               decoration: const InputDecoration(
-                labelText: 'Sezon Tarihi / Adi',
+                labelText: 'Sezon Tarihi / Adı',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -90,7 +90,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
               TextField(
                 controller: _sampiyonController,
                 decoration: const InputDecoration(
-                  labelText: 'Sezon Sampiyonu',
+                  labelText: 'Sezon Şampiyonu',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -100,7 +100,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Iptal'),
+            child: const Text('İptal'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -144,7 +144,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
   Future<String?> _sezonIstatistikleriniHesapla(int sezonId) async {
     final db = await DatabaseHelper().database;
 
-    // Sezona bağlı turnuvalardaki oyunlardan en çok kazanan (oyunKazanan) oyuncuyu buluyoruz
     final List<Map<String, dynamic>> res = await db.rawQuery('''
       SELECT oyunKazanan, COUNT(oyunKazanan) as adet 
       FROM oyunlar 
@@ -160,7 +159,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
       return res.first['oyunKazanan'].toString();
     }
 
-    // Yedek Plan: Eğer oyunlar tablosunda kazanan yoksa, eller tablosundan en başarılı (en az puanlı) olanı arar
     final List<Map<String, dynamic>> yedekRes = await db.rawQuery('''
       SELECT Oyuncu1, SUM(elSkor + IFNULL(gosterge, 0)) as toplamCeza
       FROM eller 
@@ -176,12 +174,43 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     return null;
   }
 
+  // Hero tasarımı için buton yardımcı widget'ı
+  Widget _heroAksiyonButonu({
+    required IconData icon,
+    required Color renk,
+    required String etiket,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: renk, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              etiket,
+              style: TextStyle(
+                color: renk.withValues(alpha: 0.9),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _gosterArsiv ? 'Sonuclanan Sezonlar (Arsiv)' : 'Aktif Sezonlar',
+          _gosterArsiv ? 'Sonuçlanan Sezonlar (Arşiv)' : 'Aktif Sezonlar',
         ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -199,13 +228,12 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                 } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                   return const Center(
                     child: Text(
-                      'Henuz hic sezon tanimlanmamis.',
+                      'Henüz hiç sezon tanımlanmamış.',
                       style: TextStyle(color: Colors.grey),
                     ),
                   );
                 }
 
-                // 🚀 GÜNCELLEME: 'Sezonlar' ismi küçük harfle 'sezonlarListesi' yapıldı
                 final tumSezonlar = snapshot.data!;
                 final sezonlarListesi = tumSezonlar.where((s) {
                   return _gosterArsiv
@@ -217,23 +245,132 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                   return Center(
                     child: Text(
                       _gosterArsiv
-                          ? 'Arsivde hic sezon bulunmuyor.'
+                          ? 'Arşivde hiç sezon bulunmuyor.'
                           : 'Aktif (devam eden) sezon bulunmuyor.',
                       style: const TextStyle(color: Colors.grey),
                     ),
                   );
                 }
 
-                return ListView.builder(
-                  itemCount: sezonlarListesi.length,
-                  padding: const EdgeInsets.all(8),
-                  itemBuilder: (itemContext, index) {
-                    // 🚀 GÜNCELLEME: 'Sezon' ismi küçük harfle 'tekSezon' yapıldı
-                    final tekSezon = sezonlarListesi[index];
-                    return Card(
-                      elevation: 3,
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: ListTile(
+                // 📊 1. GÖRÜNÜM: ESKİ SEZONLAR (ARŞİV) MODUNDA LİSTE HALİNDE GÖSTERİLİR
+                if (_gosterArsiv) {
+                  return ListView.builder(
+                    itemCount: sezonlarListesi.length,
+                    padding: const EdgeInsets.all(8),
+                    itemBuilder: (itemContext, index) {
+                      final tekSezon = sezonlarListesi[index];
+                      return Card(
+                        elevation: 3,
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: ListTile(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => SezonDetaySayfasi(
+                                  sezonId: tekSezon.sezonId!,
+                                  sezonAdi: "Sezon #${tekSezon.sezonId}",
+                                ),
+                              ),
+                            );
+                          },
+                          leading: const Icon(
+                            Icons.calendar_month,
+                            color: Colors.blueGrey,
+                            size: 32,
+                          ),
+                          title: Text(
+                            "Sezon #${tekSezon.sezonId} - ${tekSezon.sezonTarih}",
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Text(
+                              "🏆 Sezon Şampiyonu: ${tekSezon.sezonSampiyon}",
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.orange,
+                                ),
+                                onPressed: () =>
+                                    _sezonFormuGoster(sezon: tekSezon),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () async {
+                                  bool? onay = await showDialog<bool>(
+                                    context: itemContext,
+                                    builder: (dialogContext) => AlertDialog(
+                                      title: const Text('Sezonu Sil'),
+                                      content: const Text(
+                                        'Bu sezonu sildiğinizde sezona ait tüm kayıtlar kaybolacaktır. Onaylıyor musunuz?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            false,
+                                          ),
+                                          child: const Text('İptal'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            true,
+                                          ),
+                                          child: const Text(
+                                            'Sil',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (onay == true) {
+                                    final db = await DatabaseHelper().database;
+                                    await db.delete(
+                                      'sezonlar',
+                                      where: 'sezonId = ?',
+                                      whereArgs: [tekSezon.sezonId],
+                                    );
+                                    _verileriYenile();
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }
+
+                // 🚀 2. GÖRÜNÜM: AKTİF SEZON MODUNDA EKRANIN DEVASAL 2/3 ALANINI KAPLAYAN HERO KART TASARIMI
+                final tekSezon = sezonlarListesi.first;
+                final double ekranYuksekligi = MediaQuery.of(
+                  context,
+                ).size.height;
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 24.0,
+                  ),
+                  child: Column(
+                    children: [
+                      GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,
@@ -245,191 +382,281 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                             ),
                           );
                         },
-
-                        leading: Icon(
-                          Icons.calendar_month,
-                          color: _gosterArsiv ? Colors.blueGrey : Colors.orange,
-                          size: 32,
-                        ),
-                        title: Text(
-                          "Sezon #${tekSezon.sezonId} - ${tekSezon.sezonTarih}",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: tekSezon.sezonSampiyon != null
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 4.0),
-                                child: Text(
-                                  "🏆 Sezon Şampiyonu: ${tekSezon.sezonSampiyon}",
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              )
-                            : const Padding(
-                                padding: EdgeInsets.only(top: 4.0),
-                                child: Text(
-                                  "⚡ Sezon devam ediyor...",
-                                  style: TextStyle(color: Colors.blueGrey),
-                                ),
-                              ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 🚀 GÜNCELLEME: SEZON SONLANDIRMA BUTONU (OTOMATİK ŞAMPİYON GELECEK ŞEKİLDE YENİLENDİ)
-                            if (tekSezon.sezonSampiyon == null)
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.gavel,
-                                  color: Colors.indigo,
-                                ),
-                                tooltip: 'Sezonu Sonlandır',
-                                onPressed: () async {
-                                  final messenger = ScaffoldMessenger.of(
-                                    context,
-                                  );
-
-                                  // Pop-up açılmadan önce sezonda en çok kazanan oyuncu otomatik hesaplanır
-                                  final otomatikSampiyon =
-                                      await _sezonIstatistikleriniHesapla(
-                                        tekSezon.sezonId!,
-                                      );
-
-                                  if (!context.mounted) return;
-
-                                  String?
-                                  secilenSampiyon = await showDialog<String>(
-                                    context: context,
-                                    builder: (dialogContext) {
-                                      final TextEditingController
-                                      tempSampiyonCtrl = TextEditingController(
-                                        text:
-                                            otomatikSampiyon ??
-                                            '', // 🎯 Hesaplanan şampiyon otomatik yazılır
-                                      );
-                                      return AlertDialog(
-                                        title: const Row(
-                                          children: [
-                                            Icon(
-                                              Icons.emoji_events,
-                                              color: Colors.amber,
-                                            ),
-                                            SizedBox(width: 8),
-                                            Text('Sezonu Sonlandır'),
-                                          ],
-                                        ),
-                                        content: TextField(
-                                          controller: tempSampiyonCtrl,
-                                          decoration: const InputDecoration(
-                                            labelText: 'Sezon Şampiyonu Kim?',
-                                            border: OutlineInputBorder(),
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(
-                                              dialogContext,
-                                              null,
-                                            ),
-                                            child: const Text('İptal'),
-                                          ),
-                                          ElevatedButton(
-                                            onPressed: () {
-                                              if (tempSampiyonCtrl.text
-                                                  .trim()
-                                                  .isNotEmpty) {
-                                                Navigator.pop(
-                                                  dialogContext,
-                                                  tempSampiyonCtrl.text.trim(),
-                                                );
-                                              }
-                                            },
-                                            child: const Text('Sonlandır'),
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-
-                                  if (secilenSampiyon != null) {
-                                    final db = await DatabaseHelper().database;
-                                    await db.update(
-                                      'sezonlar',
-                                      {'sezonSampiyon': secilenSampiyon},
-                                      where: 'sezonId = ?',
-                                      whereArgs: [tekSezon.sezonId],
-                                    );
-
-                                    messenger.showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          "🏆 Sezon #${tekSezon.sezonId} Sonlandırıldı! Şampiyon: $secilenSampiyon",
-                                        ),
-                                        backgroundColor: Colors.indigo.shade800,
-                                      ),
-                                    );
-                                    _verileriYenile();
-                                  }
-                                },
-                              ),
-
-                            IconButton(
-                              icon: const Icon(
-                                Icons.edit,
-                                color: Colors.orange,
-                              ),
-                              onPressed: () =>
-                                  _sezonFormuGoster(sezon: tekSezon),
+                        child: Container(
+                          height: ekranYuksekligi * 0.55,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.blue.shade600,
+                                Colors.blue.shade900,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () async {
-                                bool? onay = await showDialog<bool>(
-                                  context: itemContext,
-                                  builder: (dialogContext) => AlertDialog(
-                                    title: const Text('Sezonu Sil'),
-                                    content: const Text(
-                                      'Bu sezonu sildiğinizde sezona ait tüm kayıtlar kaybolacaktır. Onaylıyor musunuz?',
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(dialogContext, false),
-                                        child: const Text('İptal'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(dialogContext, true),
-                                        child: const Text(
-                                          'Sil',
-                                          style: TextStyle(color: Colors.red),
+                            borderRadius: BorderRadius.circular(24.0),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.blue.withValues(alpha: 0.3),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Sezon #${tekSezon.sezonId}",
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                            letterSpacing: 1.1,
+                                          ),
                                         ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          tekSezon.sezonTarih,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 26,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const CircleAvatar(
+                                      radius: 28,
+                                      backgroundColor: Colors.white24,
+                                      child: Icon(
+                                        Icons.calendar_month,
+                                        color: Colors.white,
+                                        size: 30,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.bolt,
+                                      color: Colors.amber,
+                                      size: 54,
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      "SEZON DEVAM EDİYOR",
+                                      style: TextStyle(
+                                        color: Colors.amber,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                    SizedBox(height: 6),
+                                    Text(
+                                      "Masada rekabet tüm hızıyla sürüyor.\nİpuçları ve detaylar için karta dokunabilirsiniz.",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 13,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      _heroAksiyonButonu(
+                                        icon: Icons.gavel,
+                                        renk: Colors.amber,
+                                        etiket: "Sonlandır",
+                                        onTap: () async {
+                                          final messenger =
+                                              ScaffoldMessenger.of(context);
+                                          final otomatikSampiyon =
+                                              await _sezonIstatistikleriniHesapla(
+                                                tekSezon.sezonId!,
+                                              );
+                                          if (!context.mounted) return;
+                                          String?
+                                          secilenSampiyon = await showDialog(
+                                            context: context,
+                                            builder: (dialogContext) {
+                                              final TextEditingController
+                                              tempSampiyonCtrl =
+                                                  TextEditingController(
+                                                    text:
+                                                        otomatikSampiyon ?? '',
+                                                  );
+                                              return AlertDialog(
+                                                title: const Row(
+                                                  children: [
+                                                    Icon(
+                                                      Icons.emoji_events,
+                                                      color: Colors.amber,
+                                                    ),
+                                                    SizedBox(width: 8),
+                                                    Text('Sezonu Sonlandır'),
+                                                  ],
+                                                ),
+                                                content: TextField(
+                                                  controller: tempSampiyonCtrl,
+                                                  decoration: const InputDecoration(
+                                                    labelText:
+                                                        'Sezon Şampiyonu Kim?',
+                                                    border:
+                                                        OutlineInputBorder(),
+                                                  ),
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          dialogContext,
+                                                          null,
+                                                        ),
+                                                    child: const Text('İptal'),
+                                                  ),
+                                                  ElevatedButton(
+                                                    onPressed: () {
+                                                      if (tempSampiyonCtrl.text
+                                                          .trim()
+                                                          .isNotEmpty) {
+                                                        Navigator.pop(
+                                                          dialogContext,
+                                                          tempSampiyonCtrl.text
+                                                              .trim(),
+                                                        );
+                                                      }
+                                                    },
+                                                    child: const Text(
+                                                      'Sonlandır',
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          );
+                                          if (secilenSampiyon != null) {
+                                            final db =
+                                                await DatabaseHelper().database;
+                                            await db.update(
+                                              'sezonlar',
+                                              {
+                                                'sezonSampiyon':
+                                                    secilenSampiyon,
+                                              },
+                                              where: 'sezonId = ?',
+                                              whereArgs: [tekSezon.sezonId],
+                                            );
+                                            messenger.showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  "🏆 Sezon #${tekSezon.sezonId} Sonlandırıldı! Şampiyon: $secilenSampiyon",
+                                                ),
+                                                backgroundColor:
+                                                    Colors.indigo.shade800,
+                                              ),
+                                            );
+                                            _verileriYenile();
+                                          }
+                                        },
+                                      ),
+                                      _heroAksiyonButonu(
+                                        icon: Icons.edit,
+                                        renk: Colors.white,
+                                        etiket: "Düzenle",
+                                        onTap: () =>
+                                            _sezonFormuGoster(sezon: tekSezon),
+                                      ),
+                                      _heroAksiyonButonu(
+                                        icon: Icons.delete,
+                                        renk: Colors.redAccent,
+                                        etiket: "Sil",
+                                        onTap: () async {
+                                          bool? onay = await showDialog(
+                                            context: context,
+                                            builder: (dialogContext) => AlertDialog(
+                                              title: const Text('Sezonu Sil'),
+                                              content: const Text(
+                                                'Bu sezonu sildiğinizde sezona ait tüm kayıtlar kaybolacaktır. Onaylıyor musunuz?',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(
+                                                        dialogContext,
+                                                        false,
+                                                      ),
+                                                  child: const Text('İptal'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(
+                                                        dialogContext,
+                                                        true,
+                                                      ),
+                                                  child: const Text(
+                                                    'Sil',
+                                                    style: TextStyle(
+                                                      color: Colors.red,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (onay == true) {
+                                            final db =
+                                                await DatabaseHelper().database;
+                                            await db.delete(
+                                              'sezonlar',
+                                              where: 'sezonId = ?',
+                                              whereArgs: [tekSezon.sezonId],
+                                            );
+                                            _verileriYenile();
+                                          }
+                                        },
                                       ),
                                     ],
                                   ),
-                                );
-
-                                if (onay == true) {
-                                  final db = await DatabaseHelper().database;
-                                  await db.delete(
-                                    'sezonlar',
-                                    where: 'sezonId = ?',
-                                    whereArgs: [tekSezon.sezonId],
-                                  );
-                                  _verileriYenile();
-                                }
-                              },
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 );
               },
             ),
           ),
-
+          // Alt panel görünüm değiştirme butonu
           Padding(
             padding: const EdgeInsets.only(
               left: 16.0,
@@ -452,7 +679,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                 label: Text(
                   _gosterArsiv
                       ? "Aktif Sezonlara Dön"
-                      : "Eski Sezonlar (Arsiv)",
+                      : "Eski Sezonlar (Arşiv)",
                   style: const TextStyle(
                     color: Colors.black87,
                     fontWeight: FontWeight.bold,
@@ -470,11 +697,44 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
           ),
         ],
       ),
+      // Eş zamanlı tek aktif sezon kontrol bariyerli buton (Linter / Async emniyetli)
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _sezonFormuGoster(),
+        onPressed: () async {
+          final messenger = ScaffoldMessenger.of(context);
+          final db = await DatabaseHelper().database;
+
+          final List<Map<String, dynamic>> aktifSezonlar = await db.query(
+            'sezonlar',
+            where: 'sezonSampiyon IS NULL',
+          );
+
+          if (!context.mounted) return;
+
+          if (aktifSezonlar.isNotEmpty) {
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "⚠️ Sistemde zaten devam eden AKTİF BİR SEZON bulunuyor! Yeni bir sezon başlatabilmek için önce mevcut sezonu sonlandırmalısınız.",
+                ),
+                backgroundColor: Colors.orangeAccent,
+                duration: Duration(seconds: 4),
+              ),
+            );
+            return;
+          }
+
+          _sezonFormuGoster();
+        },
         backgroundColor: Colors.blue,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _tarihController.dispose();
+    _sampiyonController.dispose();
+    super.dispose();
   }
 }
