@@ -427,7 +427,7 @@ class _OyuncuSayfasiState extends State<OyuncuSayfasi> {
                                               ),
                                             ),
 
-                                            // 🎯 YATAY MOD 2. SÜTUN: İstatistik Rozet Paneli (Tam Merkez)
+                                            //  YATAY MOD 2. SÜTUN: İstatistik Rozet Paneli (Tam Merkez)
                                             Expanded(
                                               flex: 4,
                                               child: Center(
@@ -564,13 +564,15 @@ class _OyuncuSayfasiState extends State<OyuncuSayfasi> {
                           },
                         ),
                 ),
-                // 📊 SEKMELİ ALT PANEL GRUBU (AKTİF / PASİF AYRIMI)
+
+                // 👇 DEĞİŞİKLİK 1: Alt butonun boşluğu 80.0 yapıldı
                 Padding(
                   padding: const EdgeInsets.only(
                     left: 16.0,
                     right: 90.0,
                     top: 12.0,
-                    bottom: 16.0,
+                    bottom:
+                        80.0, // Butonları yukarı almak için 16.0'dan 80.0'a çıkarıldı
                   ),
                   child: SizedBox(
                     width: double.infinity,
@@ -608,10 +610,17 @@ class _OyuncuSayfasiState extends State<OyuncuSayfasi> {
                 ),
               ],
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _oyuncuFormuGoster(),
-        backgroundColor: Colors.blue,
-        child: const Icon(Icons.add, color: Colors.white),
+
+      // 👇 DEĞİŞİKLİK 2: FloatingActionButton bir Padding içine alındı
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(
+          bottom: 80.0,
+        ), // FAB'ı yukarı iten boşluk
+        child: FloatingActionButton(
+          onPressed: () => _oyuncuFormuGoster(),
+          backgroundColor: Colors.blue,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
       ),
     );
   }
@@ -640,7 +649,7 @@ class _OyuncuSayfasiState extends State<OyuncuSayfasi> {
           const Text("|", style: TextStyle(color: Colors.grey, fontSize: 12)),
           const SizedBox(width: 8),
           Text(
-            "🏆 ${oyuncu.kazanilanOyun}",
+            " ${oyuncu.kazanilanOyun}",
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.green,
@@ -770,4 +779,4 @@ class _OyuncuSayfasiState extends State<OyuncuSayfasi> {
     _aramaController.dispose();
     super.dispose();
   }
-} // 👈 'oyuncu_sayfasi.dart' dosyasını ve ana sınıfı hatasız kapatan en son süslü parantez
+}

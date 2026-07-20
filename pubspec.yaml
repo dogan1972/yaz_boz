@@ -95,5 +95,5 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon"
   image_path: "assets/uygulama_ikonu.png"
-  adaptive_icon_background: "#FFFFFF" # İkonun arkasında kalacak şık beyaz fon rengi
+  adaptive_icon_background: "#FFFFFF" 
   adaptive_icon_foreground: "assets/uygulama_ikonu.png"

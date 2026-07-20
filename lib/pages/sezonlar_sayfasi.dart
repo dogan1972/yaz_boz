@@ -252,7 +252,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                   );
                 }
 
-                // 📊 1. GÖRÜNÜM: ESKİ SEZONLAR (ARŞİV) MODUNDA LİSTE HALİNDE GÖSTERİLİR
+                //  1. GÖRÜNÜM: ESKİ SEZONLAR (ARŞİV) MODUNDA LİSTE HALİNDE GÖSTERİLİR
                 if (_gosterArsiv) {
                   return ListView.builder(
                     itemCount: sezonlarListesi.length,
@@ -656,13 +656,14 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
               },
             ),
           ),
+
           // Alt panel görünüm değiştirme butonu
           Padding(
             padding: const EdgeInsets.only(
               left: 16.0,
               right: 90.0,
               top: 12.0,
-              bottom: 16.0,
+              bottom: 80.0, // Butonları yukarı almak için artırıldı
             ),
             child: SizedBox(
               width: double.infinity,
@@ -697,36 +698,42 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
           ),
         ],
       ),
-      // Eş zamanlı tek aktif sezon kontrol bariyerli buton (Linter / Async emniyetli)
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final messenger = ScaffoldMessenger.of(context);
-          final db = await DatabaseHelper().database;
 
-          final List<Map<String, dynamic>> aktifSezonlar = await db.query(
-            'sezonlar',
-            where: 'sezonSampiyon IS NULL',
-          );
+      // FloatingActionButton - Yukarı alındı
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(
+          bottom: 80.0,
+        ), // FAB'ı yukarı iten boşluk
+        child: FloatingActionButton(
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            final db = await DatabaseHelper().database;
 
-          if (!context.mounted) return;
-
-          if (aktifSezonlar.isNotEmpty) {
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "⚠️ Sistemde zaten devam eden AKTİF BİR SEZON bulunuyor! Yeni bir sezon başlatabilmek için önce mevcut sezonu sonlandırmalısınız.",
-                ),
-                backgroundColor: Colors.orangeAccent,
-                duration: Duration(seconds: 4),
-              ),
+            final List<Map<String, dynamic>> aktifSezonlar = await db.query(
+              'sezonlar',
+              where: 'sezonSampiyon IS NULL',
             );
-            return;
-          }
 
-          _sezonFormuGoster();
-        },
-        backgroundColor: Colors.blue,
-        child: const Icon(Icons.add, color: Colors.white),
+            if (!context.mounted) return;
+
+            if (aktifSezonlar.isNotEmpty) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "⚠️ Sistemde zaten devam eden AKTİF BİR SEZON bulunuyor! Yeni bir sezon başlatabilmek için önce mevcut sezonu sonlandırmalısınız.",
+                  ),
+                  backgroundColor: Colors.orangeAccent,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              return;
+            }
+
+            _sezonFormuGoster();
+          },
+          backgroundColor: Colors.blue,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
       ),
     );
   }

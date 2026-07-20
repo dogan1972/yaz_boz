@@ -238,7 +238,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                           }).toList(),
                         ),
                       ),
-
                 if (_formdaSeciliOyuncular.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Text(
@@ -312,7 +311,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 12),
                 TextField(
                   controller: _oyuncuListesiController,
@@ -346,7 +344,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
             );
           }
 
-          Future oyunKaydetmeMotoru() async {
+          Future<void> oyunKaydetmeMotoru() async {
             if (_seciliTurId == null ||
                 _oyuncuListesiController.text.trim().isEmpty) {
               return;
@@ -574,7 +572,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                     );
                                   } else {
                                     final Uri webUrl = Uri.parse(
-                                      "https://whatsapp.com{Uri.encodeComponent(paylasimMetni)}",
+                                      "https://wa.me/?text=${Uri.encodeComponent(paylasimMetni)}",
                                     );
                                     await launchUrl(
                                       webUrl,
@@ -781,7 +779,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                         icon: Icons.share,
                                         renk: Colors.cyanAccent,
                                         etiket: "Paylaş",
-                                        // 🚀 KİLİTLENMEYİ ÖNLEYEN VE HARF HATALARI SIFIRLANMIŞ PAYLAŞIM MOTORU
                                         onTap: () async {
                                           String paylasimMetni =
                                               "🎮 YAZ BOZ MAÇI DEVAM EDİYOR 🎮\n"
@@ -792,9 +789,8 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                               "-----------------------------------\n"
                                               "Maç henüz sonlanmadı, defterde heyecan dorukta! 🚀";
 
-                                          // 🎯 ÇÖZÜM: Tırnak harf hatası giderildi, evrensel api.whatsapp protokolü bağlandı
                                           final Uri whatsappUrl = Uri.parse(
-                                            "https://whatsapp.com${Uri.encodeComponent(paylasimMetni)}",
+                                            "https://wa.me/?text=${Uri.encodeComponent(paylasimMetni)}",
                                           );
 
                                           try {
@@ -807,7 +803,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                                     .externalApplication,
                                               );
                                             } else {
-                                              // Eğer canLaunchUrl false dönerse emniyet amacıyla doğrudan zorlayarak açar
                                               await launchUrl(
                                                 whatsappUrl,
                                                 mode: LaunchMode
@@ -901,13 +896,15 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
               },
             ),
           ),
-          // Alt panel görünüm değiştirme butonu
+
+          // 👇 DEĞİŞİKLİK 1: Alt butonun boşluğu 80.0 yapıldı
           Padding(
             padding: const EdgeInsets.only(
               left: 16.0,
               right: 90.0,
               top: 12.0,
-              bottom: 16.0,
+              bottom:
+                  80.0, // Butonları yukarı almak için 16.0'dan 80.0'a çıkarıldı
             ),
             child: SizedBox(
               width: double.infinity,
@@ -940,49 +937,54 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
           ),
         ],
       ),
-      // 🚀 ASENKRON UYARILAR SIFIRLANMIŞ, MÜKERRER KAYDI ÖNLEYEN EŞ ZAMANLI TEK AKTİF OYUN BARİYERLİ BUTON
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final messenger = ScaffoldMessenger.of(context);
 
-          if (_turnuvalar.isEmpty) {
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "Oyun başlatabilmek için önce aktif bir turnuva oluşturmalısınız!",
+      // 👇 DEĞİŞİKLİK 2: FloatingActionButton bir Padding içine alındı
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(
+          bottom: 80.0,
+        ), // FAB'ı yukarı iten boşluk
+        child: FloatingActionButton(
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
+
+            if (_turnuvalar.isEmpty) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Oyun başlatabilmek için önce aktif bir turnuva oluşturmalısınız!",
+                  ),
                 ),
-              ),
+              );
+              return;
+            }
+
+            final db = await DatabaseHelper().database;
+            final List<Map<String, dynamic>> aktifOyunlar = await db.query(
+              'oyunlar',
+              where: 'oyunKazanan IS NULL',
             );
-            return;
-          }
 
-          final db = await DatabaseHelper().database;
-          // oyunKazanan sütunu NULL olan (yani henüz sonuçlanmamış, aktif) oyunları aratıyoruz
-          final List<Map<String, dynamic>> aktifOyunlar = await db.query(
-            'oyunlar',
-            where: 'oyunKazanan IS NULL',
-          );
+            if (!context.mounted) return;
 
-          if (!context.mounted) return;
-
-          if (aktifOyunlar.isNotEmpty) {
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "⚠️ Masada şu an devam eden AKTİF BİR OYUN (Yaz Boz Defteri) bulunuyor! Yeni bir oyun açabilmek için mevcut oyunu tablodan bitirmelisiniz.",
+            if (aktifOyunlar.isNotEmpty) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "⚠️ Masada şu an devam eden AKTİF BİR OYUN (Yaz Boz Defteri) bulunuyor! Yeni bir oyun açabilmek için mevcut oyunu tablodan bitirmelisiniz.",
+                  ),
+                  backgroundColor: Colors.orangeAccent,
+                  duration: Duration(seconds: 4),
                 ),
-                backgroundColor: Colors.orangeAccent,
-                duration: Duration(seconds: 4),
-              ),
-            );
-            return;
-          }
+              );
+              return;
+            }
 
-          final guncelOyuncular = await Oyuncu.getAll();
-          _oyunFormuGoster(guncelOyuncuListesi: guncelOyuncular);
-        },
-        backgroundColor: Colors.blue,
-        child: const Icon(Icons.add, color: Colors.white),
+            final guncelOyuncular = await Oyuncu.getAll();
+            _oyunFormuGoster(guncelOyuncuListesi: guncelOyuncular);
+          },
+          backgroundColor: Colors.blue,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
       ),
     );
   }

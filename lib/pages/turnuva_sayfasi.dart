@@ -376,7 +376,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                           subtitle: Padding(
                             padding: const EdgeInsets.only(top: 4.0),
                             child: Text(
-                              "🏆 Kazanan: ${tekTurnuva.turKazanan} | 📉 Sonuncu: ${tekTurnuva.turKaybeden}",
+                              "🏆 Kazanan: ${tekTurnuva.turKazanan} |  Sonuncu: ${tekTurnuva.turKaybeden}",
                               style: const TextStyle(
                                 color: Colors.teal,
                                 fontWeight: FontWeight.bold,
@@ -579,11 +579,11 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                       etiket: "Paylaş",
                                       onTap: () async {
                                         String paylasimMetni =
-                                            "🔥 YAZ BOZ TURNUVASI DEVAM EDİYOR 🔥\n"
+                                            " YAZ BOZ TURNUVASI DEVAM EDİYOR 🔥\n"
                                             "📅 Tarih: ${tekTurnuva.turTarih}\n"
                                             "🆔 Turnuva No: #${tekTurnuva.turId}\n"
                                             "-----------------------------------\n"
-                                            "Masada rekabet tam gaz sürüyor! Güncel skorlar için uygulamayı takip edin. ⚡";
+                                            "Masada rekabet tam gaz sürüyor! Güncel skorlar için uygulamayı takip edin. ";
                                         final Uri whatsappUrl = Uri.parse(
                                           "whatsapp://send?text=${Uri.encodeComponent(paylasimMetni)}",
                                         );
@@ -595,7 +595,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                           );
                                         } else {
                                           final Uri webUrl = Uri.parse(
-                                            "https://whatsapp.com\${Uri.encodeComponent(paylasimMetni)}",
+                                            "https://wa.me/?text=${Uri.encodeComponent(paylasimMetni)}",
                                           );
                                           await launchUrl(
                                             webUrl,
@@ -766,7 +766,8 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
               left: 16.0,
               right: 90.0,
               top: 12.0,
-              bottom: 16.0,
+              bottom:
+                  80.0, // 👈 DEĞİŞİKLİK: Butonları yukarı almak için 80.0 yapıldı
             ),
             child: SizedBox(
               width: double.infinity,
@@ -801,52 +802,57 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
           ),
         ],
       ),
-      // Eş zamanlı tek aktif turnuva kontrol bariyerli buton (Linter / Async emniyetli)
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final messenger = ScaffoldMessenger.of(context);
+      // Eş zamanlı tek aktif turnuva kontrol bariyerli buton
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(
+          bottom: 80.0,
+        ), // 👈 DEĞİŞİKLİK: FAB'ı yukarı iten boşluk
+        child: FloatingActionButton(
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
 
-          final bool sezonKontrol = await _aktifSezonVarMi();
-          if (!context.mounted) return;
+            final bool sezonKontrol = await _aktifSezonVarMi();
+            if (!context.mounted) return;
 
-          if (!sezonKontrol) {
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "⚠️ Sistemde devam eden aktif bir sezon bulunmuyor! Yeni turnuva açabilmek için önce 'Sezonlar' sayfasından yeni bir sezon başlatmalısınız.",
+            if (!sezonKontrol) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "⚠️ Sistemde devam eden aktif bir sezon bulunmuyor! Yeni turnuva açabilmek için önce 'Sezonlar' sayfasından yeni bir sezon başlatmalısınız.",
+                  ),
+                  backgroundColor: Colors.orangeAccent,
+                  duration: Duration(seconds: 4),
                 ),
-                backgroundColor: Colors.orangeAccent,
-                duration: Duration(seconds: 4),
-              ),
+              );
+              return;
+            }
+
+            final db = await DatabaseHelper().database;
+            final List<Map<String, dynamic>> aktifTurnuvalar = await db.query(
+              'turnuva',
+              where: 'turKazanan IS NULL',
             );
-            return;
-          }
 
-          final db = await DatabaseHelper().database;
-          final List<Map<String, dynamic>> aktifTurnuvalar = await db.query(
-            'turnuva',
-            where: 'turKazanan IS NULL',
-          );
+            if (!context.mounted) return;
 
-          if (!context.mounted) return;
-
-          if (aktifTurnuvalar.isNotEmpty) {
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "⚠️ Masada zaten devam eden AKTİF BİR TURNUVA bulunuyor! Yenisini açmak için önce mevcut turnuvayı bitirmelisiniz.",
+            if (aktifTurnuvalar.isNotEmpty) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "⚠️ Masada zaten devam eden AKTİF BİR TURNUVA bulunuyor! Yenisini açmak için önce mevcut turnuvayı bitirmelisiniz.",
+                  ),
+                  backgroundColor: Colors.orangeAccent,
+                  duration: Duration(seconds: 4),
                 ),
-                backgroundColor: Colors.orangeAccent,
-                duration: Duration(seconds: 4),
-              ),
-            );
-            return;
-          }
+              );
+              return;
+            }
 
-          _turnuvaFormuGoster();
-        },
-        backgroundColor: Colors.blue,
-        child: const Icon(Icons.add, color: Colors.white),
+            _turnuvaFormuGoster();
+          },
+          backgroundColor: Colors.blue,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
       ),
     );
   }
