@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="com.dogan_kanlipicak.yaz_boz"> <!-- 🎯 BÜYÜK ÇÖZÜM: Paket kimliği resmi olarak mühürlendi -->
+<manifest xmlns:android="http://android.com" package="com.dogan_kanlipicak.yaz_boz">
 
     <queries>
         <package android:name="com.whatsapp" />
@@ -12,6 +11,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="whatsapp" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
     </queries>
 
     <application
@@ -19,7 +22,6 @@
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         
-        <!-- 🎯 BÜYÜK ÇÖZÜM: MainActivity'nin tam yolu verilerek işletim sisteminin doğrudan bulması sağlandı -->
         <activity
             android:name="com.dogan_kanlipicak.yaz_boz.MainActivity"
             android:exported="true"
@@ -44,11 +46,4 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
 </manifest>
