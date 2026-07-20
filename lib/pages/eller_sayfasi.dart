@@ -29,6 +29,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
 
   late Future<List<El>> _ellerFuture;
   List<Oyun> _oyunlar = [];
+  Oyun? _seciliOyunNesnesi; //  Eşli kontrolü için oyun nesnesini tutuyoruz
   int? _seciliOyunId;
   late bool _isHighestWins;
 
@@ -54,6 +55,11 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
           _oyunlar = oyunlarListesi;
           if (_oyunlar.isNotEmpty) {
             _seciliOyunId = widget.oyunId;
+            // 🆕 Seçili oyun nesnesini bulup saklıyoruz
+            _seciliOyunNesnesi = _oyunlar.firstWhere(
+              (o) => o.oyunId == _seciliOyunId,
+              orElse: () => _oyunlar.first,
+            );
             _oyuncuAlanlariniHazirla(_seciliOyunId);
           }
         });
@@ -79,7 +85,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
     if (oyunSonucu['kazanan'] == null) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text("⚠️ Bu oyuna ait henüz hiç el skoru girilmemiş!"),
+          content: Text("️ Bu oyuna ait henüz hiç el skoru girilmemiş!"),
         ),
       );
       return;
@@ -110,7 +116,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
               text: TextSpan(
                 style: const TextStyle(fontSize: 16, color: Colors.black87),
                 children: [
-                  const TextSpan(text: "🏆 OYUN KAZANANI (Lider): \n"),
+                  const TextSpan(text: " OYUN KAZANANI (Lider): \n"),
                   TextSpan(
                     text: "${oyunSonucu['kazanan']}\n\n",
                     style: const TextStyle(
@@ -119,7 +125,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                       color: Colors.green,
                     ),
                   ),
-                  const TextSpan(text: "📉 OYUN KAYBEDENI (Sonuncu): \n"),
+                  const TextSpan(text: " OYUN KAYBEDENI (Sonuncu): \n"),
                   TextSpan(
                     text: "${oyunSonucu['kaybeden']}",
                     style: const TextStyle(
@@ -541,7 +547,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
               messenger.showSnackBar(
                 SnackBar(
                   content: Text(
-                    "🎉 Oyun Sonu!\n🏆 Lider: ${oyunSonucu['kazanan']}\n📉 Sonuncu: ${oyunSonucu['kaybeden']}",
+                    " Oyun Sonu!\n🏆 Lider: ${oyunSonucu['kazanan']}\n Sonuncu: ${oyunSonucu['kaybeden']}",
                   ),
                   backgroundColor: Colors.indigo.shade800,
                 ),
@@ -550,7 +556,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
               messenger.showSnackBar(
                 SnackBar(
                   content: Text(
-                    "🏆 Lider: ${oyunSonucu['kazanan']} | 📉 Sonuncu: ${oyunSonucu['kaybeden']}",
+                    " Lider: ${oyunSonucu['kazanan']} | 📉 Sonuncu: ${oyunSonucu['kaybeden']}",
                   ),
                   backgroundColor: Colors.teal.shade700,
                 ),
@@ -764,11 +770,65 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
             }
           }
 
-          final Map<int, TableColumnWidth> dinamikSutunGenislikleri = {
+          // 🆕 DİNAMİK SÜTUN VE BAŞLIK MANTIĞI (EŞLİ OYUN DESTEKLİ)
+          final bool esliOyun =
+              _seciliOyunNesnesi?.esliMi == 1 && _aktifOyuncular.length == 4;
+
+          List<Widget> sutunBasliklari = [];
+          Map<int, TableColumnWidth> dinamikSutunGenislikleri = {
             0: const FixedColumnWidth(65.0),
           };
-          for (int i = 0; i < _aktifOyuncular.length; i++) {
-            dinamikSutunGenislikleri[i + 1] = const FlexColumnWidth();
+
+          if (esliOyun) {
+            // Eşli Mod: 2 Sütun (Eş1 vs Eş2)
+            for (int i = 0; i < 2; i++) {
+              String es1 = _aktifOyuncular[i * 2];
+              String es2 = _aktifOyuncular[(i * 2) + 1];
+              String esBasligi = "$es1 - $es2";
+
+              sutunBasliklari.add(
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8.0,
+                    horizontal: 2.0,
+                  ),
+                  child: Text(
+                    esBasligi,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              );
+              dinamikSutunGenislikleri[i + 1] = const FlexColumnWidth();
+            }
+          } else {
+            // Tekli Mod: Herkes kendi sütununda
+            for (int i = 0; i < _aktifOyuncular.length; i++) {
+              sutunBasliklari.add(
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8.0,
+                    horizontal: 2.0,
+                  ),
+                  child: Text(
+                    _aktifOyuncular[i],
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              );
+              dinamikSutunGenislikleri[i + 1] = const FlexColumnWidth();
+            }
           }
 
           return Column(
@@ -802,6 +862,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                           ),
                         ),
                         children: [
+                          // BAŞLIK SATIRI
                           TableRow(
                             decoration: BoxDecoration(
                               color: Colors.grey.shade100,
@@ -811,26 +872,11 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                                 padding: EdgeInsets.all(8.0),
                                 child: Text('', textAlign: TextAlign.center),
                               ),
-                              ..._aktifOyuncular.map(
-                                (oyuncu) => Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8.0,
-                                    horizontal: 2.0,
-                                  ),
-                                  child: Text(
-                                    oyuncu,
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              ...sutunBasliklari,
                             ],
                           ),
+
+                          // GÖSTERGE SATIRLARI
                           ...List.generate(maxGostergeSatiri, (rowIndex) {
                             return TableRow(
                               children: [
@@ -846,27 +892,58 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                                     textAlign: TextAlign.center,
                                   ),
                                 ),
-                                ..._aktifOyuncular.map((oyuncu) {
-                                  final gostergeler =
-                                      oyuncuGostergeleri[oyuncu]!;
-                                  final deger = gostergeler.length > rowIndex
-                                      ? gostergeler[rowIndex].toString()
-                                      : '';
-                                  return Text(
-                                    deger,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.w500,
+
+                                if (esliOyun) ...[
+                                  for (int i = 0; i < 2; i++)
+                                    Builder(
+                                      builder: (ctx) {
+                                        int toplamGosterge = 0;
+                                        for (int j = 0; j < 2; j++) {
+                                          String oyuncu =
+                                              _aktifOyuncular[(i * 2) + j];
+                                          final gostergeler =
+                                              oyuncuGostergeleri[oyuncu]!;
+                                          if (gostergeler.length > rowIndex) {
+                                            toplamGosterge +=
+                                                gostergeler[rowIndex];
+                                          }
+                                        }
+                                        return Text(
+                                          toplamGosterge.toString(),
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.red,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  );
-                                }),
+                                ] else ...[
+                                  ..._aktifOyuncular.map((oyuncu) {
+                                    final gostergeler =
+                                        oyuncuGostergeleri[oyuncu]!;
+                                    final deger = gostergeler.length > rowIndex
+                                        ? gostergeler[rowIndex].toString()
+                                        : '';
+                                    return Text(
+                                      deger,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    );
+                                  }),
+                                ],
                               ],
                             );
                           }),
+
+                          // EL SKORLARI SATIRLARI
                           ...List.generate(tarihlerSirali.length, (index) {
                             final tarihKey = tarihlerSirali[index];
                             final oElinKayitlari = gruplanmisEller[tarihKey]!;
+
                             return TableRow(
                               children: [
                                 Padding(
@@ -880,40 +957,87 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                                     ),
                                   ),
                                 ),
-                                ..._aktifOyuncular.map((oyuncuAdi) {
-                                  final elKaydi = oElinKayitlari.firstWhere(
-                                    (e) => e.oyuncu1 == oyuncuAdi,
-                                    orElse: () => El(
-                                      oyunId: widget.oyunId,
-                                      elTarih: '',
-                                      oyuncu1: '',
-                                      oyuncu2: '',
-                                      elSkor: 0,
-                                    ),
-                                  );
-                                  return GestureDetector(
-                                    onTap: () => _elFormuGoster(
-                                      guncellenecekTarih: tarihKey,
-                                      elGrubuElemanlari: oElinKayitlari,
-                                    ),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8.0),
-                                      color: Colors.transparent,
-                                      child: Text(
-                                        elKaydi.elTarih.isEmpty
-                                            ? ''
-                                            : elKaydi.elSkor.toString(),
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w500,
+
+                                if (esliOyun) ...[
+                                  for (int i = 0; i < 2; i++)
+                                    GestureDetector(
+                                      onTap: () => _elFormuGoster(
+                                        guncellenecekTarih: tarihKey,
+                                        elGrubuElemanlari: oElinKayitlari,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8.0),
+                                        color: Colors.transparent,
+                                        child: Builder(
+                                          builder: (ctx) {
+                                            int esToplamSkor = 0;
+                                            for (int j = 0; j < 2; j++) {
+                                              String oyuncu =
+                                                  _aktifOyuncular[(i * 2) + j];
+                                              final elKaydi = oElinKayitlari
+                                                  .firstWhere(
+                                                    (e) => e.oyuncu1 == oyuncu,
+                                                    orElse: () => El(
+                                                      oyunId: widget.oyunId,
+                                                      elTarih: '',
+                                                      oyuncu1: '',
+                                                      oyuncu2: '',
+                                                      elSkor: 0,
+                                                    ),
+                                                  );
+                                              esToplamSkor +=
+                                                  elKaydi.elSkor +
+                                                  (elKaydi.gosterge ?? 0);
+                                            }
+                                            return Text(
+                                              esToplamSkor.toString(),
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            );
+                                          },
                                         ),
                                       ),
                                     ),
-                                  );
-                                }),
+                                ] else ...[
+                                  ..._aktifOyuncular.map((oyuncuAdi) {
+                                    final elKaydi = oElinKayitlari.firstWhere(
+                                      (e) => e.oyuncu1 == oyuncuAdi,
+                                      orElse: () => El(
+                                        oyunId: widget.oyunId,
+                                        elTarih: '',
+                                        oyuncu1: '',
+                                        oyuncu2: '',
+                                        elSkor: 0,
+                                      ),
+                                    );
+                                    return GestureDetector(
+                                      onTap: () => _elFormuGoster(
+                                        guncellenecekTarih: tarihKey,
+                                        elGrubuElemanlari: oElinKayitlari,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8.0),
+                                        color: Colors.transparent,
+                                        child: Text(
+                                          elKaydi.elTarih.isEmpty
+                                              ? ''
+                                              : elKaydi.elSkor.toString(),
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ],
                               ],
                             );
                           }),
+
+                          // SONUÇ SATIRI
                           TableRow(
                             decoration: BoxDecoration(
                               color: Colors.blue.withValues(alpha: 0.15),
@@ -931,23 +1055,53 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                                   ),
                                 ),
                               ),
-                              ..._aktifOyuncular.map((oyuncu) {
-                                final puan = toplamSonuclar[oyuncu] ?? 0;
-                                return Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: Text(
-                                    puan.toString(),
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: puan >= 0
-                                          ? Colors.blue.shade900
-                                          : Colors.red.shade900,
+
+                              if (esliOyun) ...[
+                                for (int i = 0; i < 2; i++)
+                                  Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Builder(
+                                      builder: (ctx) {
+                                        int esToplamPuan = 0;
+                                        for (int j = 0; j < 2; j++) {
+                                          String oyuncu =
+                                              _aktifOyuncular[(i * 2) + j];
+                                          esToplamPuan +=
+                                              (toplamSonuclar[oyuncu] ?? 0);
+                                        }
+                                        return Text(
+                                          esToplamPuan.toString(),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: esToplamPuan >= 0
+                                                ? Colors.blue.shade900
+                                                : Colors.red.shade900,
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ),
-                                );
-                              }),
+                              ] else ...[
+                                ..._aktifOyuncular.map((oyuncu) {
+                                  final puan = toplamSonuclar[oyuncu] ?? 0;
+                                  return Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      puan.toString(),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: puan >= 0
+                                            ? Colors.blue.shade900
+                                            : Colors.red.shade900,
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
                             ],
                           ),
                         ],
@@ -1068,7 +1222,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                 if (sonuclar.isEmpty) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
                     const SnackBar(
-                      content: Text("⚠️ Paylaşılacak skor verisi henüz yok!"),
+                      content: Text("️ Paylaşılacak skor verisi henüz yok!"),
                     ),
                   );
                   return;
@@ -1077,9 +1231,26 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                     "📊 YAZ BOZ CANLI SKOR TABLOSU 📊\n"
                     "🆔 Oyun ID: #${widget.oyunId}\n"
                     "-----------------------------------\n";
-                sonuclar.forEach((oyuncu, puan) {
-                  skorTablosu += "👤 $oyuncu: $puan Puan\n";
-                });
+
+                // 🆕 Eşli modda paylaşım metnini de eşlere göre formatla
+                final bool esliOyun =
+                    _seciliOyunNesnesi?.esliMi == 1 &&
+                    _aktifOyuncular.length == 4;
+
+                if (esliOyun) {
+                  for (int i = 0; i < 2; i++) {
+                    String es1 = _aktifOyuncular[i * 2];
+                    String es2 = _aktifOyuncular[(i * 2) + 1];
+                    int toplamPuan =
+                        (sonuclar[es1] ?? 0) + (sonuclar[es2] ?? 0);
+                    skorTablosu += "👥 $es1 & $es2: $toplamPuan Puan\n";
+                  }
+                } else {
+                  sonuclar.forEach((oyuncu, puan) {
+                    skorTablosu += " $oyuncu: $puan Puan\n";
+                  });
+                }
+
                 skorTablosu +=
                     "-----------------------------------\n"
                     "⏱️ Toplam oynanan el: ${eller.length} el\n"
@@ -1095,7 +1266,6 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
                     mode: LaunchMode.externalApplication,
                   );
                 } else {
-                  // Düzeltme: Eksik $ işareti ve doğru wa.me formatı eklendi
                   final Uri webUrl = Uri.parse(
                     "https://wa.me/?text=${Uri.encodeComponent(skorTablosu)}",
                   );

@@ -30,6 +30,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
   int? _seciliTurId;
   bool _isHighestWins = false;
   bool _gosterArsiv = false;
+  bool _esliMi = false; //  EŞLİ OYUN KONTROLÜ
 
   @override
   void initState() {
@@ -75,6 +76,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
       _kazananController.text = oyun.oyunKazanan ?? '';
       _kaybedenController.text = oyun.oyunKaybeden ?? '';
       _seciliTurId = oyun.turId;
+      _esliMi = oyun.esliMi == 1; // 🆕 Mevcut oyunun eşli durumunu yükle
       _formdaSeciliOyuncular = oyun.oyuncu
           .split(', ')
           .where((o) => o.isNotEmpty)
@@ -89,6 +91,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
       _seciliTurId = _turnuvalar.isNotEmpty ? _turnuvalar.first.turId : null;
       _formdaSeciliOyuncular = [];
       _isHighestWins = false;
+      _esliMi = false; // 🆕 Yeni oyun varsayılan olarak tekli
     }
 
     showDialog(
@@ -157,6 +160,47 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                   ],
                 ),
                 const SizedBox(height: 16),
+
+                // 🆕 EŞLİ OYUN SWITCH'İ
+                SwitchListTile(
+                  title: const Text(
+                    "Eşli Oyun",
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: const Text(
+                    "Karşı karşıya oturanlar eş kabul edilir",
+                  ),
+                  value: _esliMi,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (bool value) {
+                    setDialogState(() {
+                      _esliMi = value;
+                      // Sadece 4 kişilikse sıralamayı değiştir
+                      if (_formdaSeciliOyuncular.length == 4) {
+                        List<String> yeniSiralama;
+                        if (_esliMi) {
+                          // Çapraz eşleştirme: [0,2] ve [1,3] yan yana gelsin
+                          yeniSiralama = [
+                            _formdaSeciliOyuncular[0],
+                            _formdaSeciliOyuncular[2],
+                            _formdaSeciliOyuncular[1],
+                            _formdaSeciliOyuncular[3],
+                          ];
+                        } else {
+                          // Normal sıralama (Varsayılan veya önceki sıra)
+                          // Not: Tam tersi mantık karmaşık olabilir,
+                          // kullanıcıyı bilgilendirip manuel düzeltmesine izin vermek daha güvenli olabilir.
+                          // Ancak burada basitçe mevcut listeyi koruyoruz.
+                          yeniSiralama = List.from(_formdaSeciliOyuncular);
+                        }
+                        _formdaSeciliOyuncular = yeniSiralama;
+                        _oyuncuListesiController.text = _formdaSeciliOyuncular
+                            .join(', ');
+                      }
+                    });
+                  },
+                ),
+
                 const Text(
                   "Oyuncu Seçimi:",
                   style: TextStyle(
@@ -352,6 +396,8 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
             final navigator = Navigator.of(dialogContext);
             final elSayisi = int.tryParse(_elSayisiController.text.trim()) ?? 8;
             final oyuncuSayisi = _formdaSeciliOyuncular.length;
+
+            // 🆕 Eşli durumunu toMap'e dahil et
             if (oyun == null) {
               Oyun yeniOyun = Oyun(
                 turId: _seciliTurId!,
@@ -361,6 +407,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                 oyuncu: _oyuncuListesiController.text.trim(),
                 oyunKazanan: null,
                 oyunKaybeden: null,
+                esliMi: _esliMi ? 1 : 0, // 🆕 Eşli mi bilgisi kaydediliyor
               );
               await yeniOyun.save();
             } else {
@@ -377,6 +424,9 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                 oyunKaybeden: _kaybedenController.text.trim().isEmpty
                     ? null
                     : _kaybedenController.text.trim(),
+                esliMi: _esliMi
+                    ? 1
+                    : 0, // 🆕 Güncellemede de eşli durumu korunmalı/güncellenmeli
               );
               await guncelOyun.update();
             }
@@ -533,7 +583,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                   ),
                                 ),
                                 Text(
-                                  "🏆 Kazanan: ${oyun.oyunKazanan} | 📉 Kaybeden: ${oyun.oyunKaybeden}",
+                                  " Kazanan: ${oyun.oyunKazanan} | 📉 Kaybeden: ${oyun.oyunKaybeden}",
                                   style: const TextStyle(
                                     color: Colors.teal,
                                     fontWeight: FontWeight.bold,
@@ -558,7 +608,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                       "🆔 Oyun No: #${oyun.oyunId}\n"
                                       "👥 Oyuncular: ${oyun.oyuncu}\n"
                                       "-----------------------------------\n"
-                                      "🏆 KAZANAN LİDER: ${oyun.oyunKazanan}\n"
+                                      " KAZANAN LİDER: ${oyun.oyunKazanan}\n"
                                       "📉 CEZA GÜZELİ: ${oyun.oyunKaybeden}\n\n"
                                       "Güzel maçtı, elinize sağlık! 🃏";
 
@@ -783,7 +833,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                           String paylasimMetni =
                                               "🎮 YAZ BOZ MAÇI DEVAM EDİYOR 🎮\n"
                                               "📅 Tarih: ${oyun.oyunTarih}\n"
-                                              "🆔 Oyun No: #${oyun.oyunId}\n"
+                                              " Oyun No: #${oyun.oyunId}\n"
                                               "👥 Masadakiler: ${oyun.oyuncu}\n"
                                               "📊 Format: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu\n"
                                               "-----------------------------------\n"
@@ -816,7 +866,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                             ).showSnackBar(
                                               SnackBar(
                                                 content: Text(
-                                                  "⚠️ WhatsApp açılırken bir sorun oluştu veya cihazda yüklü değil: $e",
+                                                  "️ WhatsApp açılırken bir sorun oluştu veya cihazda yüklü değil: $e",
                                                 ),
                                                 backgroundColor:
                                                     Colors.orange.shade800,

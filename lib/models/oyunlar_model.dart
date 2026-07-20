@@ -9,6 +9,7 @@ class Oyun {
   final String oyuncu;
   final String? oyunKazanan;
   final String? oyunKaybeden;
+  final int esliMi; //  YENİ ALAN: 1 = Eşli, 0 = Tekli
 
   Oyun({
     this.oyunId,
@@ -19,6 +20,7 @@ class Oyun {
     required this.oyuncu,
     this.oyunKazanan,
     this.oyunKaybeden,
+    this.esliMi = 0, // Varsayılan olarak tekli (0)
   });
 
   factory Oyun.fromMap(Map<String, dynamic> map) {
@@ -30,7 +32,9 @@ class Oyun {
       oyuncuSayisi: map['oyuncuSayisi'],
       oyuncu: map['oyuncu'],
       oyunKazanan: map['oyunKazanan'],
-      oyunKaybeden: map['OyunKaybeden'],
+      oyunKaybeden:
+          map['oyunKaybeden'], // 🔧 DÜZELTME: Büyük harf hatası giderildi
+      esliMi: map['esliMi'] ?? 0, // 🆕 Eşli bilgisi çekiliyor
     );
   }
 
@@ -43,7 +47,8 @@ class Oyun {
       'oyuncuSayisi': oyuncuSayisi,
       'oyuncu': oyuncu,
       'oyunKazanan': oyunKazanan,
-      'OyunKaybeden': oyunKaybeden,
+      'oyunKaybeden': oyunKaybeden, // 🔧 DÜZELTME: Büyük harf hatası giderildi
+      'esliMi': esliMi, // 🆕 Eşli bilgisi kaydediliyor
     };
   }
 
@@ -72,7 +77,7 @@ class Oyun {
     final db = await DatabaseHelper().database;
     final List<Map<String, dynamic>> maps = await db.query(
       'oyunlar',
-      where: 'oyunKazanan IS NULL', // 🚀 Sadece bitmemiş oyunları filtreler
+      where: 'oyunKazanan IS NULL',
       orderBy: 'oyunId DESC',
       limit: 1,
     );
@@ -91,26 +96,15 @@ class Oyun {
 
   static Future<int> delete(int oyunId) async {
     final db = await DatabaseHelper().database;
-    // Sadece oyunu siler; altındaki eller otomatik silinir!
     return await db.delete('oyunlar', where: 'oyunId = ?', whereArgs: [oyunId]);
   }
 
-  /// Oyuna ait ellerin toplamına göre kazananı ve kaybedeni bulur.
-  /// [isHighestWins] true ise en yüksek alan kazanır, false ise en düşük alan kazanır.
-  /// Oyuna ait ellerin toplamına göre kazananı ve kaybedeni bulur.
-  /// [isHighestWins] true ise en yüksek alan kazanır, false ise en düşük alan kazanır.
-
-  /// Oyuna ait ellerin toplam skorunu (El Skoru + Gösterge Puanı) hesaplar,
-  /// oyunu sonlandırarak kazananı ve kaybedeni belirler.
-  /// [isHighestWins] true ise en yüksek alan kazanır, false ise en düşük alan kazanır.
-
-  /// Oyuna ait ellerin toplam skorunu hesaplar.
-  /// [kaliciKapat] true verilirse oyunu arşivler, false verilirse sadece canlı hesaplama yapar.
+  /// Oyuna ait ellerin toplam skorunu hesaplar ve sonucu belirler.
+  /// [kaliciKapat] true ise oyunu arşivler, false ise sadece canlı hesaplama yapar.
   static Future<Map<String, String?>> oyunSonucunuHesapla({
     required int oyunId,
     required bool isHighestWins,
-    bool kaliciKapat =
-        false, // 🚀 YENİ PARAMETRE: Varsayılan olarak oyunu kapatmaz
+    bool kaliciKapat = false,
   }) async {
     final db = await DatabaseHelper().database;
 
@@ -132,12 +126,13 @@ class Oyun {
     String kazanan = res.first['Oyuncu1'] as String;
     String kaybeden = res.last['Oyuncu1'] as String;
 
-    // 🎯 KRİTİK DÜZELTME: Sadece oyun tamamen bittiğinde veritabanına kazananı işler.
-    // Böylece oyun sonlandırılmadıkça 'oyunKazanan' null kalır ve aktif listeden düşmez!
     if (kaliciKapat) {
       await db.update(
         'oyunlar',
-        {'oyunKazanan': kazanan, 'OyunKaybeden': kaybeden},
+        {
+          'oyunKazanan': kazanan,
+          'oyunKaybeden': kaybeden, // 🔧 DÜZELTME: Büyük harf hatası giderildi
+        },
         where: 'oyunId = ?',
         whereArgs: [oyunId],
       );

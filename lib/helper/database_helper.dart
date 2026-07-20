@@ -19,8 +19,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'oyun_veritabani.db');
     return await openDatabase(
       path,
-      version:
-          4, // 🚀 Versiyonu 4'e yükseltiyoruz (isAktif kolonu entegrasyonu için)
+      version: 5, // 🚀 Versiyonu 5'e yükseltiyoruz (esliMi kolonu için)
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -32,7 +31,7 @@ class DatabaseHelper {
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
-  // 🚀 VERİLERİ KORUMA MOTORU: Eski cihazlardaki mevcut verilere zarar vermeden isAktif kolonunu canlı olarak enjekte eder
+  // 🚀 VERİLERİ KORUMA MOTORU: Eski cihazlardaki mevcut verilere zarar vermeden esliMi kolonunu canlı olarak enjekte eder
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 4) {
       try {
@@ -41,9 +40,22 @@ class DatabaseHelper {
           "ALTER TABLE oyuncu ADD COLUMN isAktif INTEGER DEFAULT 1;",
         );
       } catch (e) {
-        // Kolon zaten mevcutsa uygulamanın çökmesini engeller
         _logger(
           "isAktif kolonu güncelleme esnasında zaten mevcut veya bir hata oluştu: $e",
+        );
+      }
+    }
+
+    // 🆕 YENİ: Eşli Mi? kolonunu ekleyelim
+    if (oldVersion < 5) {
+      try {
+        // Mevcut oyunlar tablosuna esliMi kolonunu ekler ve eski oyunları varsayılan olarak TEKLI (0) kabul eder
+        await db.execute(
+          "ALTER TABLE oyunlar ADD COLUMN esliMi INTEGER DEFAULT 0;",
+        );
+      } catch (e) {
+        _logger(
+          "esliMi kolonu güncelleme esnasında zaten mevcut veya bir hata oluştu: $e",
         );
       }
     }
@@ -54,7 +66,7 @@ class DatabaseHelper {
       'CREATE TABLE sezonlar (sezonId INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, sezonTarih TEXT NOT NULL, sezonSampiyon TEXT)',
     );
 
-    await db.execute('''
+    await db.execute(''' 
       CREATE TABLE turnuva (
         turId INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         sezonId INTEGER NOT NULL,
@@ -76,7 +88,8 @@ class DatabaseHelper {
       'CREATE TABLE oyuncu (oyuncuId INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, oyuncuAdSoyad TEXT NOT NULL, oyuncuSehir TEXT NOT NULL, isAktif INTEGER DEFAULT 1)',
     );
 
-    await db.execute('''
+    // 🆕 YENİ: OYUNLAR TABLOSU GÜNCELLENDİ: 'esliMi' kolonu eklendi
+    await db.execute(''' 
       CREATE TABLE oyunlar (
         oyunId INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         turId INTEGER NOT NULL,
@@ -85,12 +98,13 @@ class DatabaseHelper {
         oyuncuSayisi INTEGER NOT NULL,
         oyuncu TEXT NOT NULL,
         oyunKazanan TEXT,
-        OyunKaybeden TEXT,
+        oyunKaybeden TEXT, // 🔧 DÜZELTME: Büyük harf hatası giderildi
+        esliMi INTEGER DEFAULT 0, // 🆕 Eşli oyun bayrağı
         FOREIGN KEY (turId) REFERENCES turnuva (turId) ON DELETE CASCADE
       )
     ''');
 
-    await db.execute('''
+    await db.execute(''' 
       CREATE TABLE eller (
         elId INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         oyunId INTEGER NOT NULL,
@@ -108,7 +122,6 @@ class DatabaseHelper {
 
   // Linter uyarısını engellemek için kurumsal log köprüsü
   void _logger(String mesaj) {
-    // Geliştirme ortamı debug mesajları için ayrılmıştır
     assert(() {
       return true;
     }());
