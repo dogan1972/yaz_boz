@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Flutter (Android Emulator)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug"
+            // deviceId satırını şimdilik yorum satırı yapıyoruz veya siliyoruz.
+            // VS Code genellikle açık olan emülatörü otomatik bulur.
+        }
+    ]
+}

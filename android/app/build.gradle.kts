@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services") 
 }
 
 android {
@@ -9,13 +10,10 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    // ✅ DOĞRU KOTLIN DSL SÖZDİZİMİ
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -24,29 +22,41 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 🔥 DOĞRU KOTLIN DSL SÖZDİZİMİ İLE NDK FİLTRELERİ
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        }
     }
 
-        signingConfigs {
+    signingConfigs {
         create("release") {
             keyAlias = "upload"
-            // 🎯 Terminalde belirlediğiniz şifreyi buraya yazın:
             keyPassword = "d167167k."
             storePassword = "d167167k."
-            
-            // 🚀 BÜYÜK ÇÖZÜM: Bilgisayar isminden bağımsız, doğrudan proje içindeki dosyayı okur
             storeFile = file("upload-keystore.p12") 
         }
     }
 
-
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    // 🔥 YENİ NESİL COMPILER DSL (Hem JVM uyarısını çözer hem audioplayers uyumluluğunu sağlar)
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+    
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
     }
 }
 

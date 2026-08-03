@@ -17,7 +17,7 @@
             <data android:mimeType="text/plain" />
         </intent>
     </queries>
-
+    <uses-permission android:name="android.permission.CAMERA"/>
     <application
         android:label="yaz_boz"
         android:name="${applicationName}"
