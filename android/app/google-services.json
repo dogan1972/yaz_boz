@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "323928204447",
+    "project_id": "yazboz-sosyal",
+    "storage_bucket": "yazboz-sosyal.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:323928204447:android:f8bc4072354cbe660eeeaa",
+        "android_client_info": {
+          "package_name": "com.dogan_kanlipicak.yaz_boz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZwmQ2mroKFvZJcQ_QyXRTYg797YsXSKQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
