@@ -1,9 +1,12 @@
+// lib/pages/arkadas/arkadas_sayfasi.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:yaz_boz/models/kullanici.dart';
+import 'package:yaz_boz/models/kullanici_model.dart';
 import 'package:yaz_boz/services/arkadas_servisi.dart';
+import 'package:yaz_boz/pages/arkadas/arkadas_widgets.dart';
+import 'package:yaz_boz/theme/app_theme.dart';
 
 class ArkadasSayfasi extends StatefulWidget {
   const ArkadasSayfasi({super.key});
@@ -20,7 +23,6 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
   bool _yukleniyor = true;
   bool _ekliyor = false;
 
-  // ✅ istek akışı
   List<ArkadaslikIstegi> _gelenIstekler = [];
   Set<String> _gidenAlanIds = {};
   StreamSubscription<List<ArkadaslikIstegi>>? _gelenSub;
@@ -59,12 +61,163 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
   }
 
   Future<void> _kullanicilariYukle() async {
-    final snap = await _fs.collection('kullanicilar').get();
-    if (!mounted) return;
-    setState(() {
-      _tumKullanicilar = snap.docs.map(Kullanici.fromFirestore).toList();
-      _yukleniyor = false;
-    });
+    try {
+      final snap = await _fs.collection('kullanicilar').get();
+      if (!mounted) return;
+
+      final kullanicilar = snap.docs.map(Kullanici.fromFirestore).toList();
+
+      setState(() {
+        _tumKullanicilar = kullanicilar;
+        _yukleniyor = false;
+      });
+    } catch (e) {
+      debugPrint("Kullanıcılar yüklenirken hata: $e");
+      if (mounted) setState(() => _yukleniyor = false);
+    }
+  }
+
+  // lib/pages/arkadas/arkadas_sayfasi.dart - _grupAdiDuzenleDialog metodu
+
+  Future<void> _grupAdiDuzenleDialog() async {
+    final safeContext = context;
+
+    final ben = _ben;
+    if (ben == null || ben.uid.isEmpty) {
+      if (mounted) _bildir('Kullanıcı bilgisi bulunamadı.', hata: true);
+      return;
+    }
+
+    // ✅ YENİ: GRUP ID'Yİ DOĞRUDAN FIRESTORE'DAN ÇEK (MODEL HATASINI ÖNLER)
+    final userDoc = await _fs.collection('kullanicilar').doc(ben.uid).get();
+    if (!safeContext.mounted) return;
+
+    final userData = userDoc.data();
+    final String? grupId = userData?['grupId'] as String?;
+    final String? grupAdi = userData?['grupAdi'] as String?;
+
+    if (grupId == null || grupId.isEmpty) {
+      debugPrint('❌ HATA: Firestore\'da grupId yok! UserData: $userData');
+      if (mounted) {
+        _bildir(
+          'Grup bilgisi bulunamadı. Lütfen gruptan ayrılıp tekrar katılın.',
+          hata: true,
+        );
+      }
+      return;
+    }
+
+    debugPrint('✅ Başarılı: Grup ID bulundu -> $grupId');
+
+    final grupRef = _fs.collection('gruplar').doc(grupId.trim());
+    final grupDoc = await grupRef.get();
+
+    if (!safeContext.mounted) return;
+
+    if (!grupDoc.exists) {
+      debugPrint('❌ HATA: Grup dokümanı gerçekten yok! ID: $grupId');
+      _bildir(
+        'Grup dokümanı bulunamadı! (ID: $grupId)\nLütfen gruptan ayrılıp tekrar katılın.',
+        hata: true,
+      );
+      return;
+    }
+
+    final ctrl = TextEditingController(text: grupAdi ?? '');
+
+    final yeniAd = await showDialog<String>(
+      context: safeContext,
+      builder: (d) => AlertDialog(
+        backgroundColor: AppColors.cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Grup Adını Değiştir',
+          style: AppTextStyles.bodyPrimary,
+        ),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: const InputDecoration(
+            labelText: 'Yeni Grup Adı',
+            border: OutlineInputBorder(),
+            labelStyle: TextStyle(color: AppColors.textHint),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d),
+            child: const Text('İptal', style: AppTextStyles.bodySecondary),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(d, ctrl.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentAmber,
+            ),
+            child: const Text(
+              'Kaydet',
+              style: TextStyle(
+                color: Color(0xFF1A1206),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Dialog sonrası mounted kontrolü
+    if (!mounted || yeniAd == null || yeniAd.isEmpty || yeniAd == grupAdi) {
+      ctrl.dispose();
+      return;
+    }
+
+    try {
+      // ✅ 1. ADIM: Grup ID'sini tekrar al (Güvenlik için)
+      final currentGrupId = ben.grupId?.trim();
+      if (currentGrupId == null || currentGrupId.isEmpty) {
+        if (mounted) _bildir('Grup bilgisi kayboldu.', hata: true);
+        return;
+      }
+
+      // Güncelleme öncesi son güvenlik kontrolü
+      if (!(await grupRef.get()).exists) {
+        if (mounted) _bildir('Grup silinmiş, güncellenemedi.', hata: true);
+        return;
+      }
+
+      // 2. Grup dokümanını güncelle
+      await grupRef.update({'grupAdi': yeniAd});
+
+      // ✅ 3. YENİ: O gruptaki TÜM kullanıcıların profilini güncelle
+      final kullanicilarSnap = await _fs
+          .collection('kullanicilar')
+          .where(
+            'grupId',
+            isEqualTo: currentGrupId,
+          ) // ✅ Artık temizGrupId yerine currentGrupId
+          .get();
+
+      if (kullanicilarSnap.docs.isNotEmpty) {
+        final batch = _fs.batch();
+        for (var doc in kullanicilarSnap.docs) {
+          batch.update(doc.reference, {'grupAdi': yeniAd});
+        }
+        await batch.commit();
+        debugPrint(
+          '✅ Grup adı güncellendi ve ${kullanicilarSnap.docs.length} kullanıcı profili yenilendi.',
+        );
+      }
+
+      if (mounted) {
+        await _kullanicilariYukle(); // Listeyi yenile
+        _bildir('Grup adı başarıyla güncellendi.', hata: false);
+      }
+    } catch (e) {
+      if (mounted) _bildir('Güncelleme hatası: $e', hata: true);
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   Kullanici? get _ben {
@@ -77,10 +230,11 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
   }
 
   Kullanici? _kullaniciBul(String uid) {
-    for (final k in _tumKullanicilar) {
-      if (k.uid == uid) return k;
+    try {
+      return _tumKullanicilar.firstWhere((k) => k.uid == uid);
+    } catch (_) {
+      return null;
     }
-    return null;
   }
 
   List<Kullanici> get _arkadaslarim {
@@ -106,12 +260,11 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(m),
-        backgroundColor: hata ? Colors.red.shade700 : Colors.green.shade700,
+        backgroundColor: hata ? AppColors.accentRed : AppColors.accentGreen,
       ),
     );
   }
 
-  // ✅ ARTIK İSTEK GÖNDERİR — otomatik eklemez
   Future<void> _istekGonder(Kullanici hedef) async {
     final ben = _ben;
     if (ben == null) return;
@@ -135,10 +288,10 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
     if (ben == null) return;
     try {
       await ArkadasServisi().istegiOnayla(i.id, i.gonderen, ben);
-      await _kullanicilariYukle(); // arkadaşlarım listesi yenilensin
-      _bildir('Arkadaşlık onaylandı.', hata: false);
+      await _kullanicilariYukle();
+      _bildir('Arkadaşlık onaylandı ve gruba dahil oldunuz.', hata: false);
     } catch (e) {
-      _bildir('Hata: $e', hata: true);
+      _bildir(e.toString(), hata: true);
     }
   }
 
@@ -164,6 +317,45 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
       _bildir('${hedef.nick} arkadaşlıktan çıkarıldı.', hata: false);
     } catch (e) {
       _bildir('Hata: $e', hata: true);
+    }
+  }
+
+  Future<void> _gruptanAyril() async {
+    final ben = _ben;
+    if (ben == null || ben.grupId == null) return;
+
+    final onay = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Gruptan Ayrıl', style: AppTextStyles.bodyPrimary),
+        content: const Text(
+          'Bu gruptan ayrılmak istediğinize emin misiniz?\n\nGrup üyeleriyle olan sezon/turnuva erişiminiz kesilecek ancak arkadaşlığınız devam edecek.',
+          style: AppTextStyles.bodySecondary,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç', style: AppTextStyles.bodySecondary),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.accentRed),
+            child: const Text('Ayrıl'),
+          ),
+        ],
+      ),
+    );
+
+    if (onay == true && mounted) {
+      try {
+        await ArkadasServisi().gruptanAyril(ben.uid);
+        await _kullanicilariYukle();
+        _bildir('Gruptan başarıyla ayrıldınız.', hata: false);
+      } catch (e) {
+        _bildir('Ayrılma hatası: $e', hata: true);
+      }
     }
   }
 
@@ -201,29 +393,24 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1C),
+      backgroundColor: AppColors.bgPrimary,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0B1220),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Arkadaşlar',
-          style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.5),
-        ),
+        title: const Text('Arkadaşlar', style: AppTextStyles.heading),
       ),
       body: _yukleniyor
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
+              child: CircularProgressIndicator(color: AppColors.accentAmber),
             )
           : ListView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
+                _grupBilgiKarti(),
+                const SizedBox(height: 14),
                 _kodKarti(),
                 const SizedBox(height: 14),
                 _aramaKarti(),
                 const SizedBox(height: 24),
-                // ✅ GELEN İSTEKLER — bekleyen aksiyon, en üstte
                 if (_gelenIstekler.isNotEmpty) ...[
                   _gelenIsteklerBolumu(),
                   const SizedBox(height: 24),
@@ -234,21 +421,96 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
     );
   }
 
-  // ── Davet kodu ile istek gönder ───────────────────────────
-  Widget _kodKarti() {
-    return _kart(
+  Widget _grupBilgiKarti() {
+    final ben = _ben;
+    final grupAdi = ben?.grupAdi ?? ben?.grupId;
+
+    return arkadasKart(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'DAVET KODU',
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w700,
-              fontSize: 10,
-              letterSpacing: 1.6,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.groups_rounded,
+                      color: grupAdi != null
+                          ? AppColors.accentCyan
+                          : AppColors.textHint,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('GRUP DURUMU', style: AppTextStyles.caption),
+                  ],
+                ),
+              ),
+              if (grupAdi != null)
+                IconButton(
+                  icon: const Icon(
+                    Icons.edit_note,
+                    color: AppColors.accentAmber,
+                    size: 20,
+                  ),
+                  tooltip: 'Grup Adını Değiştir',
+                  onPressed: _grupAdiDuzenleDialog,
+                ),
+            ],
           ),
+          const SizedBox(height: 8),
+          if (grupAdi != null) ...[
+            Text(
+              grupAdi,
+              style: const TextStyle(
+                color: AppColors.accentCyan,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Sezon ve turnuvalara sadece bu grup üzerinden erişebilirsiniz.',
+              style: TextStyle(color: Color(0xFF475569), fontSize: 11),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _gruptanAyril,
+                icon: const Icon(Icons.logout, size: 16),
+                label: const Text('GRUPTAN AYRIL'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.accentRed,
+                  side: BorderSide(
+                    color: AppColors.accentRed.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+            ),
+          ] else ...[
+            const Text(
+              'Henüz bir gruba dahil değilsiniz.',
+              style: TextStyle(color: Color(0xFF475569), fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Bir arkadaşlık isteğini onayladığınızda otomatik olarak o kişinin grubuna dahil olursunuz.',
+              style: TextStyle(color: Color(0xFF334155), fontSize: 10),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _kodKarti() {
+    return arkadasKart(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('DAVET KODU', style: AppTextStyles.caption),
           const SizedBox(height: 4),
           const Text(
             'Arkadaşının profilindeki kodu buraya yaz',
@@ -263,7 +525,7 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
                   maxLength: 6,
                   textCapitalization: TextCapitalization.characters,
                   style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
+                    color: AppColors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 4,
@@ -271,29 +533,15 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
                   ),
                   decoration: InputDecoration(
                     hintText: 'YB7K2Q',
-                    hintStyle: const TextStyle(color: Color(0xFF334155)),
+                    hintStyle: const TextStyle(color: AppColors.divider),
                     counterText: '',
-                    filled: true,
-                    fillColor: const Color(0xFF0B1220),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF1E293B)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF1E293B)),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
-              _aksiyonButonu(
+              arkadasAksiyonButonu(
                 'İSTEK GÖNDER',
-                const Color(0xFF2DD4BF),
+                AppColors.accentCyan,
                 _kodIleEkle,
                 yukleniyor: _ekliyor,
               ),
@@ -304,40 +552,31 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
     );
   }
 
-  // ── Nick ile ara ──────────────────────────────────────────
   Widget _aramaKarti() {
     final sonuclar = _aramaSonuclari;
     final q = _aramaController.text.trim();
-    return _kart(
+    return arkadasKart(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'NICK İLE ARA',
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w700,
-              fontSize: 10,
-              letterSpacing: 1.6,
-            ),
-          ),
+          const Text('NICK İLE ARA', style: AppTextStyles.caption),
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF0B1220),
+              color: AppColors.inputBg,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF1E293B)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
                 const SizedBox(width: 12),
-                const Icon(Icons.search, color: Color(0xFF64748B), size: 20),
+                const Icon(Icons.search, color: AppColors.textHint, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _aramaController,
                     style: const TextStyle(
-                      color: Color(0xFFE2E8F0),
+                      color: AppColors.textPrimary,
                       fontSize: 15,
                     ),
                     decoration: const InputDecoration(
@@ -352,7 +591,7 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
                   IconButton(
                     icon: const Icon(
                       Icons.close,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textHint,
                       size: 18,
                     ),
                     onPressed: () => _aramaController.clear(),
@@ -367,7 +606,7 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
                 padding: EdgeInsets.symmetric(vertical: 8),
                 child: Text(
                   'Eşleşen kullanıcı yok.',
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  style: AppTextStyles.bodySecondary,
                 ),
               )
             else
@@ -385,13 +624,13 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          _avatar(k.nick, 18),
+          arkadasAvatar(k.nick, 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               k.nick,
               style: const TextStyle(
-                color: Color(0xFFE2E8F0),
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
@@ -401,7 +640,7 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
               ? const Text(
                   '✓ Arkadaş',
                   style: TextStyle(
-                    color: Color(0xFF2DD4BF),
+                    color: AppColors.accentCyan,
                     fontWeight: FontWeight.w700,
                     fontSize: 12,
                   ),
@@ -412,23 +651,16 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
                   children: [
                     Icon(
                       Icons.check_circle_rounded,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textSecondary,
                       size: 14,
                     ),
                     SizedBox(width: 5),
-                    Text(
-                      'Gönderildi',
-                      style: TextStyle(
-                        color: Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text('Gönderildi', style: AppTextStyles.bodySecondary),
                   ],
                 )
-              : _aksiyonButonu(
+              : arkadasAksiyonButonu(
                   'İSTEK',
-                  const Color(0xFF2DD4BF),
+                  AppColors.accentCyan,
                   () => _istekGonder(k),
                   kucuk: true,
                   yukleniyor: _ekliyor,
@@ -438,54 +670,23 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
     );
   }
 
-  // ── Gelen istekler ────────────────────────────────────────
   Widget _gelenIsteklerBolumu() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.person_add_alt_1,
-              color: Color(0xFFF59E0B),
-              size: 14,
-            ),
-            const SizedBox(width: 8),
-            const Text(
-              'GELEN İSTEKLER',
-              style: TextStyle(
-                color: Color(0xFFF59E0B),
-                fontWeight: FontWeight.w800,
-                fontSize: 11,
-                letterSpacing: 1.6,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '${_gelenIstekler.length}',
-                style: const TextStyle(
-                  color: Color(0xFFF59E0B),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
+        arkadasBolumBasligi(
+          'GELEN İSTEKLER',
+          _gelenIstekler.length,
+          AppColors.accentAmber,
         ),
         const SizedBox(height: 10),
-        _kart(
+        arkadasKart(
           child: Column(
             children: [
               for (var i = 0; i < _gelenIstekler.length; i++) ...[
                 if (i > 0)
                   const Divider(
-                    color: Color(0xFF1E293B),
+                    color: AppColors.border,
                     height: 1,
                     thickness: 1,
                   ),
@@ -505,28 +706,28 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
-          _avatar(nick, 20),
+          arkadasAvatar(nick, 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               nick,
               style: const TextStyle(
-                color: Color(0xFFE2E8F0),
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
             ),
           ),
-          _aksiyonButonu(
+          arkadasAksiyonButonu(
             'REDDET',
-            const Color(0xFF64748B),
+            AppColors.textHint,
             () => _istegiReddet(i),
             kucuk: true,
           ),
           const SizedBox(width: 8),
-          _aksiyonButonu(
+          arkadasAksiyonButonu(
             'ONAYLA',
-            const Color(0xFF2DD4BF),
+            AppColors.accentCyan,
             () => _istegiOnayla(i),
             kucuk: true,
           ),
@@ -535,44 +736,15 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
     );
   }
 
-  // ── Arkadaşlarım ──────────────────────────────────────────
   Widget _arkadaslarimBolumu() {
     final liste = _arkadaslarim;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Text(
-              'ARKADAŞLARIM',
-              style: TextStyle(
-                color: Color(0xFF94A3B8),
-                fontWeight: FontWeight.w800,
-                fontSize: 11,
-                letterSpacing: 1.6,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2DD4BF).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '${liste.length}',
-                style: const TextStyle(
-                  color: Color(0xFF2DD4BF),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ),
+        arkadasBolumBasligi('ARKADAŞLARIM', liste.length, AppColors.accentCyan),
         const SizedBox(height: 10),
         if (liste.isEmpty)
-          _kart(
+          arkadasKart(
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 18),
@@ -581,12 +753,12 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
                     const Icon(
                       Icons.group_add,
                       size: 40,
-                      color: Color(0xFF334155),
+                      color: AppColors.divider,
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       'Henüz arkadaşın yok.',
-                      style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                      style: AppTextStyles.bodySecondary,
                     ),
                     const SizedBox(height: 2),
                     const Text(
@@ -599,13 +771,13 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
             ),
           )
         else
-          _kart(
+          arkadasKart(
             child: Column(
               children: [
                 for (var i = 0; i < liste.length; i++) ...[
                   if (i > 0)
                     const Divider(
-                      color: Color(0xFF1E293B),
+                      color: AppColors.border,
                       height: 1,
                       thickness: 1,
                     ),
@@ -623,13 +795,13 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
-          _avatar(k.nick, 20),
+          arkadasAvatar(k.nick, 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               k.nick,
               style: const TextStyle(
-                color: Color(0xFFE2E8F0),
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
@@ -638,86 +810,13 @@ class _ArkadasSayfasiState extends State<ArkadasSayfasi> {
           IconButton(
             icon: const Icon(
               Icons.person_remove_alt_1,
-              color: Color(0xFF64748B),
+              color: AppColors.textHint,
               size: 20,
             ),
             tooltip: 'Arkadaşlıktan çıkar',
             onPressed: () => _arkadasKaldir(k),
           ),
         ],
-      ),
-    );
-  }
-
-  // ── ortak parçalar ────────────────────────────────────────
-  Widget _kart({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111A2B),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E293B)),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _avatar(String nick, double r) {
-    final harf = nick.trim().isEmpty ? '?' : nick.trim()[0].toUpperCase();
-    return Container(
-      width: r * 2,
-      height: r * 2,
-      alignment: Alignment.center,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [Color(0xFFF59E0B), Color(0xFFB45309)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Text(
-        harf,
-        style: TextStyle(
-          color: const Color(0xFF1A1206),
-          fontWeight: FontWeight.w900,
-          fontSize: r * 0.9,
-        ),
-      ),
-    );
-  }
-
-  Widget _aksiyonButonu(
-    String etiket,
-    Color renk,
-    VoidCallback onTap, {
-    bool kucuk = false,
-    bool yukleniyor = false,
-  }) {
-    return Material(
-      color: renk,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: yukleniyor ? null : onTap,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: kucuk ? 12 : 18,
-            vertical: kucuk ? 8 : 12,
-          ),
-          child: Text(
-            etiket,
-            style: TextStyle(
-              color: renk == const Color(0xFF64748B)
-                  ? const Color(0xFFE2E8F0)
-                  : const Color(0xFF0A0F1C),
-              fontWeight: FontWeight.w900,
-              fontSize: kucuk ? 11 : 13,
-              letterSpacing: 1,
-            ),
-          ),
-        ),
       ),
     );
   }

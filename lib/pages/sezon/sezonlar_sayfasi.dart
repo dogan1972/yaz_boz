@@ -1,68 +1,24 @@
+// lib/pages/sezon/sezonlar_sayfasi.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:yaz_boz/services/firestore_service.dart';
+import 'package:yaz_boz/services/sezon_servisi.dart';
 import 'package:yaz_boz/pages/sezon/sezon_detay_sayfasi.dart';
-
-// ─────────────────────────────────────────────────────────────
-// SEZON MODELİ  (+ numara)
-// ─────────────────────────────────────────────────────────────
-class Sezon {
-  final String id;
-  final int? numara;
-  final String sezonTarih;
-  final String? sezonSampiyon;
-
-  Sezon({
-    required this.id,
-    this.numara,
-    required this.sezonTarih,
-    this.sezonSampiyon,
-  });
-
-  factory Sezon.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return Sezon(
-      id: doc.id,
-      numara: (data['numara'] as num?)?.toInt(),
-      sezonTarih: data['sezonTarih'] ?? '',
-      sezonSampiyon: data['sezonSampiyon'],
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    'numara': numara,
-    'sezonTarih': sezonTarih,
-    'sezonSampiyon': sezonSampiyon,
-  };
-}
-
-// ✅ Detaylı sezon istatistiği (sonlandırma sıralaması için)
-class OyuncuSezonIstatistigi {
-  final String ad;
-  int trvKazanma = 0;
-  int trvKatilim = 0;
-  int oyunGalibiyet = 0;
-  double enIyiElSkoru;
-
-  OyuncuSezonIstatistigi(this.ad, {required bool isLowestWins})
-    : enIyiElSkoru = isLowestWins ? double.infinity : double.negativeInfinity;
-}
+import 'package:yaz_boz/models/sezon_model.dart';
+import 'package:yaz_boz/pages/sezon/sezon_widgets.dart';
+import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
 
 class SezonlarSayfasi extends StatefulWidget {
   const SezonlarSayfasi({super.key});
-
   @override
   State<SezonlarSayfasi> createState() => _SezonlarSayfasiState();
 }
 
 class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
-  final FirestoreService _firestoreService = FirestoreService();
-  final TextEditingController _tarihController = TextEditingController();
-  final TextEditingController _sampiyonController = TextEditingController();
-
   bool _gosterArsiv = false;
   List<Sezon> _tumSezonlar = [];
+  bool _yukleniyor = false;
   bool _isLoading = true;
+  StreamSubscription<List<Sezon>>? _sezonStreamSub;
 
   @override
   void initState() {
@@ -70,16 +26,14 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     _verileriDinle();
   }
 
-  // ✅ OPTİMİZE: veri değişmediyse setState yok → donma önlenir
   void _verileriDinle() {
-    _firestoreService.getCollectionStream('sezonlar').listen((snapshot) {
+    _sezonStreamSub = SezonServisi().tumSezonlarStreami().listen((yeniListe) {
       if (!mounted) return;
-      final yeni = snapshot.docs.map((d) => Sezon.fromFirestore(d)).toList()
-        ..sort((a, b) => b.sezonTarih.compareTo(a.sezonTarih));
-      if (yeni.length != _tumSezonlar.length ||
-          !_listelerEsitMi(yeni, _tumSezonlar)) {
+
+      if (yeniListe.length != _tumSezonlar.length ||
+          !_listelerEsitMi(yeniListe, _tumSezonlar)) {
         setState(() {
-          _tumSezonlar = yeni;
+          _tumSezonlar = yeniListe;
           _isLoading = false;
         });
       } else if (_isLoading) {
@@ -101,120 +55,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     return true;
   }
 
-  // ✅ NUMARA ROZETİ — tablo rakamlı, gölgeli, tek yerden tutarlı
-  Widget _numaraRozeti(int? n, {Color renk = Colors.blue, double? font}) {
-    if (n == null) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: renk.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: renk.withValues(alpha: 0.55), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: renk.withValues(alpha: 0.30),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Text(
-        '#$n',
-        style: TextStyle(
-          color: renk,
-          fontWeight: FontWeight.w800,
-          fontSize: font ?? 13,
-          letterSpacing: 0.6,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────
-  // SEZON FORMU  (yeni kayıtta numara, düzenlemede dokunma)
-  // ───────────────────────────────────────────────────────────
-  void _sezonFormuGoster({Sezon? sezon}) {
-    if (sezon != null) {
-      _tarihController.text = sezon.sezonTarih;
-      _sampiyonController.text = sezon.sezonSampiyon ?? '';
-    } else {
-      _tarihController.text = DateTime.now().toString().substring(0, 10);
-      _sampiyonController.clear();
-    }
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(sezon == null ? 'Yeni Sezon Ekle' : 'Sezonu Düzenle'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _tarihController,
-              decoration: const InputDecoration(
-                labelText: 'Sezon Tarihi / Adı',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (sezon != null) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _sampiyonController,
-                decoration: const InputDecoration(
-                  labelText: 'Sezon Şampiyonu',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('İptal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (_tarihController.text.trim().isEmpty) return;
-
-              if (sezon == null) {
-                // ✅ YENİ KAYIT: atomik sıralı numara
-                final data = <String, dynamic>{
-                  'sezonTarih': _tarihController.text.trim(),
-                  'sezonSampiyon': _sampiyonController.text.trim().isEmpty
-                      ? null
-                      : _sampiyonController.text.trim(),
-                  'numara': await _firestoreService.nextNumber('sezonlar'),
-                };
-                await _firestoreService.setDocument(
-                  'sezonlar',
-                  FirebaseFirestore.instance.collection('sezonlar').doc().id,
-                  data,
-                );
-              } else {
-                // ✅ DÜZENLEME: numara'ya DOKUNMA
-                await _firestoreService.updateDocument('sezonlar', sezon.id, {
-                  'sezonTarih': _tarihController.text.trim(),
-                  'sezonSampiyon': _sampiyonController.text.trim().isEmpty
-                      ? null
-                      : _sampiyonController.text.trim(),
-                });
-              }
-
-              if (!dialogContext.mounted) return;
-              Navigator.pop(dialogContext);
-            },
-            child: const Text('Kaydet'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────
-  // HİYERARŞİK SİLME  (sezon → turnuva → oyun → el)
-  // ───────────────────────────────────────────────────────────
   Future<void> _sezonuSil(Sezon tekSezon) async {
     try {
       if (!mounted) return;
@@ -224,42 +64,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
         builder: (ctx) => const Center(child: CircularProgressIndicator()),
       );
 
-      final tumTurnuvalarSnap = await _firestoreService.getCollection(
-        'turnuva',
-      );
-      final silinecekTurnuvalar = tumTurnuvalarSnap.docs
-          .where(
-            (d) =>
-                (d.data() as Map<String, dynamic>)['sezonId'].toString() ==
-                tekSezon.id,
-          )
-          .toList();
-
-      for (var turDoc in silinecekTurnuvalar) {
-        final turId = turDoc.id;
-        final tumOyunlarSnap = await _firestoreService.getCollection('oyunlar');
-        final silinecekOyunlar = tumOyunlarSnap.docs
-            .where((d) => (d.data() as Map<String, dynamic>)['turId'] == turId)
-            .toList();
-
-        for (var oyunDoc in silinecekOyunlar) {
-          final oyunId = oyunDoc.id;
-          final tumEllerSnap = await _firestoreService.getCollection('eller');
-          final silinecekEller = tumEllerSnap.docs
-              .where(
-                (d) => (d.data() as Map<String, dynamic>)['oyunId'] == oyunId,
-              )
-              .map((d) => d.id)
-              .toList();
-          for (var elId in silinecekEller) {
-            await _firestoreService.deleteDocument('eller', elId);
-          }
-          await _firestoreService.deleteDocument('oyunlar', oyunId);
-        }
-        await _firestoreService.deleteDocument('turnuva', turId);
-      }
-
-      await _firestoreService.deleteDocument('sezonlar', tekSezon.id);
+      await SezonServisi().sezonuSil(tekSezon.id);
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -276,270 +81,154 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Silme sırasında hata oluştu: $e"),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.accentRed,
         ),
       );
     }
   }
 
-  // ───────────────────────────────────────────────────────────
-  // SONLANDIRMA  (aktif kilit + katılım oyunlardan + en iyi skor eller'den)
-  // ───────────────────────────────────────────────────────────
   Future<void> _sezonuSonlandir(Sezon tekSezon) async {
     try {
       if (!mounted) return;
 
-      final tumTurnuvalarSnap = await _firestoreService.getCollection(
-        'turnuva',
-      );
+      // ✅ 1. ADIM: Boş mu kontrol et ve uyarı göster
+      final stats = await SezonServisi().sezonIstatistikHesapla(tekSezon.id);
       if (!mounted) return;
-      final sezonTurnuvalari = tumTurnuvalarSnap.docs
-          .where(
-            (d) =>
-                (d.data() as Map<String, dynamic>)['sezonId'].toString() ==
-                tekSezon.id,
-          )
-          .toList();
 
-      final tumOyunlarSnap = await _firestoreService.getCollection('oyunlar');
-      if (!mounted) return;
-      final sezonOyunlari = tumOyunlarSnap.docs.where((d) {
-        final data = d.data() as Map<String, dynamic>;
-        return data['turId'].toString().isNotEmpty &&
-            sezonTurnuvalari.any((t) => t.id == data['turId']);
-      }).toList();
+      final toplamOyun = stats['toplamOyun'] as int? ?? 0;
 
-      // ✅ AKTİF TURNUVA + AKTİF OYUN KİLİDİ — spinner'dan ÖNCE
-      final aktifTur = sezonTurnuvalari
-          .where(
-            (d) => (d.data() as Map<String, dynamic>)['turKazanan'] == null,
-          )
-          .length;
-      final aktifOyun = sezonOyunlari
-          .where(
-            (d) => (d.data() as Map<String, dynamic>)['oyunKazanan'] == null,
-          )
-          .length;
-      if (aktifTur > 0 || aktifOyun > 0) {
-        if (!mounted) return;
-        final parca = <String>[];
-        if (aktifTur > 0) parca.add('$aktifTur aktif turnuva');
-        if (aktifOyun > 0) parca.add('$aktifOyun aktif oyun');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "⚠️ Bu sezonda hâlâ devam eden ${parca.join(' ve ')} var — önce onları sonlandırın.",
-            ),
-            backgroundColor: Colors.orangeAccent,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        return;
-      }
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const Center(child: CircularProgressIndicator()),
-      );
-
-      bool isLowestWins = false;
-      Map<String, OyuncuSezonIstatistigi> statsMap = {};
-
-      if (sezonTurnuvalari.isNotEmpty) {
-        final ilkTurData =
-            sezonTurnuvalari.first.data() as Map<String, dynamic>;
-        isLowestWins = ilkTurData['isLowestWins'] == true;
-
-        // turnuva katkısı: SADECE turnuva kazanma (katılım burada DEĞİL)
-        for (var turDoc in sezonTurnuvalari) {
-          final data = turDoc.data() as Map<String, dynamic>;
-          final kazanan = data['turKazanan'];
-          if (kazanan != null && kazanan.toString().isNotEmpty) {
-            final a = kazanan.toString();
-            statsMap.putIfAbsent(
-              a,
-              () => OyuncuSezonIstatistigi(a, isLowestWins: isLowestWins),
-            );
-            statsMap[a]!.trvKazanma++;
-          }
-        }
-
-        // ✅ oyun katkısı: oyun galibiyet + KATILIM (distinct turId)
-        final oyuncuTurSeti = <String, Set<String>>{};
-        for (var oyunDoc in sezonOyunlari) {
-          final data = oyunDoc.data() as Map<String, dynamic>;
-          final kaybeden = data['oyunKaybeden'];
-          final turId = data['turId']?.toString();
-          if (data['oyuncu'] != null) {
-            for (var s in data['oyuncu'].toString().split(RegExp(r'[,\n]'))) {
-              final o = s.trim();
-              if (o.isNotEmpty) {
-                statsMap.putIfAbsent(
-                  o,
-                  () => OyuncuSezonIstatistigi(o, isLowestWins: isLowestWins),
-                );
-                if (turId != null && turId.isNotEmpty) {
-                  oyuncuTurSeti.putIfAbsent(o, () => {}).add(turId);
-                }
-                if (kaybeden == null || kaybeden.toString() != o) {
-                  statsMap[o]!.oyunGalibiyet++;
-                }
-              }
-            }
-          }
-        }
-        // katılım = oyuncunun adının geçtiği distinct turnuva sayısı
-        oyuncuTurSeti.forEach((ad, set) {
-          if (statsMap.containsKey(ad)) statsMap[ad]!.trvKatilim = set.length;
-        });
-
-        // ✅ EN İYİ EL SKORU — skorlar 'eller' koleksiyonunda, oyunId ile süz
-        final sezonOyunIdSet = sezonOyunlari.map((d) => d.id).toSet();
-        final ellerSnap = await _firestoreService.getCollection('eller');
-        if (!mounted) return;
-        for (var elDoc in ellerSnap.docs) {
-          final elData = elDoc.data() as Map<String, dynamic>;
-          if (!sezonOyunIdSet.contains(elData['oyunId']?.toString())) continue;
-          final skorlar = elData['skorlar'];
-          if (skorlar is! Map) continue;
-          skorlar.forEach((oyuncu, skor) {
-            final ad = oyuncu.toString();
-            if (!statsMap.containsKey(ad)) return;
-            final v = (skor is num)
-                ? skor.toDouble()
-                : (double.tryParse(skor.toString()) ?? 0.0);
-            if (isLowestWins) {
-              if (v < statsMap[ad]!.enIyiElSkoru) {
-                statsMap[ad]!.enIyiElSkoru = v;
-              }
-            } else {
-              if (v > statsMap[ad]!.enIyiElSkoru) {
-                statsMap[ad]!.enIyiElSkoru = v;
-              }
-            }
-          });
-        }
-      } else {
-        // ✅ BOŞ SEZON: manuel şampiyon
-        if (!mounted) return;
-        Navigator.pop(context);
-        final controller = TextEditingController();
-        final manuel = await showDialog<String>(
+      if (toplamOyun == 0) {
+        final bosOnay = await showDialog<bool>(
           context: context,
           builder: (d) => AlertDialog(
-            title: const Text('Sezonu Sonlandır'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+            backgroundColor: AppColors.cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: const Row(
               children: [
-                const Text(
-                  "Bu sezonda hiç turnuva bulunmuyor.\nLütfen şampiyon adını girin:",
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: 'Şampiyon Adı',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+                Icon(Icons.warning_amber_rounded, color: AppColors.accentAmber),
+                SizedBox(width: 8),
+                Text('Sezon Boş!', style: AppTextStyles.bodyPrimary),
               ],
+            ),
+            content: const Text(
+              'Bu sezonda hiç oyun oynanmamış. Yine de sonlandırmak istiyor musunuz?',
+              style: AppTextStyles.bodySecondary,
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(d, null),
-                child: const Text('İptal'),
+                onPressed: () => Navigator.pop(d, false),
+                child: const Text('Vazgeç', style: AppTextStyles.bodySecondary),
               ),
               ElevatedButton(
-                onPressed: () => Navigator.pop(d, controller.text.trim()),
-                child: const Text('Onayla'),
+                onPressed: () => Navigator.pop(d, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accentAmber,
+                ),
+                child: const Text(
+                  'Evet, Sonlandır',
+                  style: TextStyle(
+                    color: Color(0xFF1A1206),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ],
           ),
         );
-        if (manuel == null || manuel.isEmpty || !mounted) return;
-        await _firestoreService.updateDocument('sezonlar', tekSezon.id, {
-          'sezonSampiyon': manuel,
-        });
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Sezon bitti! Şampiyon: $manuel"),
-            backgroundColor: Colors.indigo.shade800,
-          ),
-        );
-        return;
+        if (bosOnay != true || !mounted) return;
       }
 
-      final sirali = statsMap.values.toList();
-      final lowestRef = isLowestWins;
-      sirali.sort((a, b) {
-        if (b.trvKazanma != a.trvKazanma) {
-          return b.trvKazanma.compareTo(a.trvKazanma);
+      // ✅ 2. ADIM: Şampiyon belirleme dialogu (Boşsa manuel giriş zorunlu)
+      String sampiyonAd = '';
+      if (toplamOyun > 0) {
+        final oyuncuListesiRaw = stats['oyuncuIstatistikleri'];
+        if (oyuncuListesiRaw is List && oyuncuListesiRaw.isNotEmpty) {
+          int maxKazanan = -1;
+          String enIyiOyuncu = '';
+          for (var item in oyuncuListesiRaw) {
+            try {
+              final kazanilan = item.kazandigiOyun as int? ?? 0;
+              final ad = item.oyuncuAdi as String? ?? '';
+              if (kazanilan > maxKazanan) {
+                maxKazanan = kazanilan;
+                enIyiOyuncu = ad;
+              }
+            } catch (_) {}
+          }
+          sampiyonAd = enIyiOyuncu;
         }
-        if (b.trvKatilim != a.trvKatilim) {
-          return b.trvKatilim.compareTo(a.trvKatilim);
-        }
-        if (b.oyunGalibiyet != a.oyunGalibiyet) {
-          return b.oyunGalibiyet.compareTo(a.oyunGalibiyet);
-        }
-        return lowestRef
-            ? a.enIyiElSkoru.compareTo(b.enIyiElSkoru)
-            : b.enIyiElSkoru.compareTo(a.enIyiElSkoru);
-      });
-      final sampiyon = sirali.isNotEmpty ? sirali.first.ad : null;
+      } else {
+        // Boş sezon için varsayılan değer
+        sampiyonAd = '-';
+      }
 
       if (!mounted) return;
-      Navigator.pop(context);
-
-      final onay = await showDialog<bool>(
+      final controller = TextEditingController(text: sampiyonAd);
+      final manuel = await showDialog<String>(
         context: context,
         builder: (d) => AlertDialog(
-          title: const Text('Sezonu Sonlandır'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Hesaplanan Sıralama (${lowestRef ? 'En Düşük Skor Kazanır' : 'En Yüksek Skor Kazanır'}):",
+          backgroundColor: AppColors.cardBg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: Text(
+            toplamOyun == 0 ? 'Boş Sezonu Kapat' : 'Sezonu Sonlandır',
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                toplamOyun == 0
+                    ? "Bu sezon boş olarak kapatılacak. Şampiyon alanına '-' veya iptal notu girebilirsiniz:"
+                    : "Şampiyon adını onaylayın veya değiştirin:",
+                style: AppTextStyles.bodySecondary,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Şampiyon / Durum',
+                  border: OutlineInputBorder(),
+                  labelStyle: TextStyle(color: AppColors.textHint),
                 ),
-                const SizedBox(height: 8),
-                ...sirali
-                    .take(5)
-                    .map(
-                      (s) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          "${s.ad}: ${s.trvKazanma} Trv. Kaz., ${s.trvKatilim} Kat., ${s.oyunGalibiyet} Oyun Gal., En İyi Skor: ${s.enIyiElSkoru}",
-                        ),
-                      ),
-                    ),
-              ],
-            ),
+              ),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('İptal'),
+              onPressed: () => Navigator.pop(d, null),
+              child: const Text('İptal', style: AppTextStyles.bodySecondary),
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: const Text('Onayla', style: TextStyle(color: Colors.blue)),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(d, controller.text.trim()),
+              child: const Text('Onayla'),
             ),
           ],
         ),
       );
-      if (onay != true || !mounted) return;
 
-      await _firestoreService.updateDocument('sezonlar', tekSezon.id, {
-        'sezonSampiyon': sampiyon,
-      });
+      if (manuel == null || manuel.isEmpty || !mounted) return;
+
+      // ✅ 3. ADIM: İşlemi tamamla
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      await SezonServisi().sezonuSonlandir(tekSezon.id, manuel);
+
       if (!mounted) return;
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Sezon bitti! Şampiyon: $sampiyon"),
+          content: Text(
+            toplamOyun == 0
+                ? "Boş sezon kapatıldı."
+                : "Sezon bitti! Şampiyon: $manuel",
+          ),
           backgroundColor: Colors.indigo.shade800,
         ),
       );
@@ -548,179 +237,14 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
       if (!mounted) return;
       if (Navigator.canPop(context)) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  Widget _heroAksiyonButonu({
-    required IconData icon,
-    required Color renk,
-    required String etiket,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: renk, size: 22),
-            const SizedBox(height: 2),
-            Text(
-              etiket,
-              style: TextStyle(
-                color: renk.withValues(alpha: 0.9),
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
+        SnackBar(
+          content: Text("Hata: $e"),
+          backgroundColor: AppColors.accentRed,
         ),
       );
     }
-
-    final liste = _tumSezonlar
-        .where(
-          (s) =>
-              _gosterArsiv ? s.sezonSampiyon != null : s.sezonSampiyon == null,
-        )
-        .toList();
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1C),
-      appBar: AppBar(
-        title: Text(
-          _gosterArsiv ? 'Sonuçlanan Sezonlar (Arşiv)' : 'Aktif Sezonlar',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-          ),
-        ),
-        backgroundColor: const Color(0xFF0B1220),
-        foregroundColor: const Color(0xFFF8FAFC),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: liste.isEmpty
-                ? _bosDurum()
-                : _gosterArsiv
-                ? _arsivListeGorunumu(liste)
-                : _aktifHeroGorunumu(liste.first),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(
-              left: 16.0,
-              right: 90.0,
-              top: 12.0,
-              bottom: 80.0,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => setState(() => _gosterArsiv = !_gosterArsiv),
-                icon: Icon(
-                  _gosterArsiv ? Icons.play_circle_outline : Icons.history,
-                  color: const Color(0xFFE2E8F0),
-                ),
-                label: Text(
-                  _gosterArsiv
-                      ? "Aktif Sezonlara Dön"
-                      : "Eski Sezonlar (Arşiv)",
-                  style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: Color(0xFF334155), width: 1.5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 80.0),
-        child: FloatingActionButton(
-          onPressed: () {
-            final aktifVar = _tumSezonlar.any((s) => s.sezonSampiyon == null);
-            if (aktifVar && mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "⚠️ Sistemde zaten devam eden AKTİF BİR SEZON bulunuyor!",
-                  ),
-                  backgroundColor: Colors.orangeAccent,
-                  duration: Duration(seconds: 4),
-                ),
-              );
-              return;
-            }
-            _sezonFormuGoster();
-          },
-          backgroundColor: const Color(0xFFF59E0B),
-          child: const Icon(Icons.add, color: Color(0xFF1A1206)),
-        ),
-      ),
-    );
   }
 
-  // ✅ Karakterli boş durum (düz gri metin yerine ikonlu yönlendirme)
-  Widget _bosDurum() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            _gosterArsiv ? Icons.inventory_2_outlined : Icons.flag_outlined,
-            size: 64,
-            color: const Color(0xFF334155),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            _gosterArsiv
-                ? 'Arşivde hiç sezon bulunmuyor.'
-                : 'Aktif (devam eden) sezon bulunmuyor.',
-            style: const TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _gosterArsiv
-                ? 'Sonlanan sezonlar burada listelenecek.'
-                : 'Yeni sezon başlatmak için + butonuna dokun.',
-            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────
-  // ARŞİV LİSTESİ  (rozet + tıklanınca detay)
-  // ───────────────────────────────────────────────────────────
   Widget _arsivListeGorunumu(List<Sezon> sezonlar) {
     return ListView.builder(
       itemCount: sezonlar.length,
@@ -730,7 +254,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Material(
-            color: const Color(0xFF111A2B),
+            color: AppColors.cardBg,
             borderRadius: BorderRadius.circular(16),
             elevation: 0,
             child: InkWell(
@@ -748,7 +272,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF1E293B)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: IntrinsicHeight(
                   child: Row(
@@ -757,7 +281,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                       Container(
                         width: 5,
                         decoration: const BoxDecoration(
-                          color: Color(0xFF334155),
+                          color: AppColors.divider,
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(16),
                             bottomLeft: Radius.circular(16),
@@ -773,9 +297,9 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                             children: [
                               Row(
                                 children: [
-                                  _numaraRozeti(
+                                  sezonNumaraRozeti(
                                     tekSezon.numara,
-                                    renk: const Color(0xFF94A3B8),
+                                    renk: AppColors.textSecondary,
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
@@ -784,7 +308,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 16,
-                                        color: Color(0xFFF8FAFC),
+                                        color: AppColors.textPrimary,
                                         letterSpacing: -0.2,
                                       ),
                                       maxLines: 1,
@@ -801,9 +325,9 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                       ),
                                       decoration: BoxDecoration(
                                         border: Border.all(
-                                          color: const Color(
-                                            0xFF64748B,
-                                          ).withValues(alpha: 0.55),
+                                          color: AppColors.textHint.withValues(
+                                            alpha: 0.55,
+                                          ),
                                           width: 1.4,
                                         ),
                                         borderRadius: BorderRadius.circular(5),
@@ -811,7 +335,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                       child: const Text(
                                         'ARŞİV',
                                         style: TextStyle(
-                                          color: Color(0xFF64748B),
+                                          color: AppColors.textHint,
                                           fontWeight: FontWeight.w800,
                                           fontSize: 9,
                                           letterSpacing: 2,
@@ -828,14 +352,14 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 1.6,
-                                  color: Color(0xFF94A3B8),
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
                               const SizedBox(height: 3),
                               Row(
                                 children: [
                                   const Text(
-                                    '🏆 ',
+                                    ' ',
                                     style: TextStyle(fontSize: 16),
                                   ),
                                   Expanded(
@@ -844,7 +368,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                       style: const TextStyle(
                                         fontSize: 17,
                                         fontWeight: FontWeight.w900,
-                                        color: Color(0xFFFCD34D),
+                                        color: AppColors.accentAmber,
                                         letterSpacing: -0.2,
                                       ),
                                       maxLines: 1,
@@ -857,29 +381,29 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                           ),
                         ),
                       ),
-                      _silDugmesi(
+                      sezonSilDugmesi(
                         onTap: () async {
                           final onay = await showDialog<bool>(
                             context: itemContext,
                             builder: (d) => AlertDialog(
-                              backgroundColor: const Color(0xFF111A2B),
+                              backgroundColor: AppColors.cardBg,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(18),
                               ),
                               title: const Text(
                                 'Sezonu Sil',
-                                style: TextStyle(color: Color(0xFFF8FAFC)),
+                                style: AppTextStyles.bodyPrimary,
                               ),
                               content: const Text(
                                 'Bu sezonu ve altındaki TÜM verileri kalıcı olarak silmek istediğinize emin misiniz?',
-                                style: TextStyle(color: Color(0xFF94A3B8)),
+                                style: AppTextStyles.bodySecondary,
                               ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(d, false),
                                   child: const Text(
                                     'İptal',
-                                    style: TextStyle(color: Color(0xFF94A3B8)),
+                                    style: AppTextStyles.bodySecondary,
                                   ),
                                 ),
                                 TextButton(
@@ -887,7 +411,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                   child: Text(
                                     'Sil',
                                     style: TextStyle(
-                                      color: Colors.amber.shade700,
+                                      color: AppColors.accentAmber,
                                     ),
                                   ),
                                 ),
@@ -910,40 +434,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     );
   }
 
-  // ✅ Ortak sil butonu — basınca kırmızıya dönen, tehlike hissi veren yüzey
-  Widget _silDugmesi({required VoidCallback onTap}) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.amber.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.amber.shade700.withValues(alpha: 0.45),
-              ),
-            ),
-            child: Icon(
-              Icons.delete_outline,
-              color: Colors.amber.shade800,
-              size: 22,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────
-  // AKTİF HERO KARTI  (canlı yüzey: ripple + amber rozet)
-  // ───────────────────────────────────────────────────────────
   Widget _aktifHeroGorunumu(Sezon tekSezon) {
     final double h = MediaQuery.of(context).size.height;
     return Padding(
@@ -973,12 +463,12 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
               ),
               borderRadius: BorderRadius.circular(24.0),
               border: Border.all(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
+                color: AppColors.accentAmber.withValues(alpha: 0.25),
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.22),
+                  color: AppColors.accentAmber.withValues(alpha: 0.22),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 ),
@@ -996,16 +486,16 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _numaraRozeti(
+                            sezonNumaraRozeti(
                               tekSezon.numara,
-                              renk: const Color(0xFFFCD34D),
+                              renk: AppColors.accentAmber,
                               font: 15,
                             ),
                             const SizedBox(height: 8),
                             Text(
                               tekSezon.sezonTarih,
                               style: const TextStyle(
-                                color: Color(0xFFF8FAFC),
+                                color: AppColors.textPrimary,
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -1022,18 +512,14 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(
-                            0xFFF59E0B,
-                          ).withValues(alpha: 0.15),
+                          color: AppColors.accentAmber.withValues(alpha: 0.15),
                           border: Border.all(
-                            color: const Color(
-                              0xFFF59E0B,
-                            ).withValues(alpha: 0.4),
+                            color: AppColors.accentAmber.withValues(alpha: 0.4),
                           ),
                         ),
                         child: const Icon(
                           Icons.calendar_month,
-                          color: Color(0xFFFCD34D),
+                          color: AppColors.accentAmber,
                           size: 30,
                         ),
                       ),
@@ -1042,12 +528,12 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                   const Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.bolt, color: Color(0xFFF59E0B), size: 54),
+                      Icon(Icons.bolt, color: AppColors.accentAmber, size: 54),
                       SizedBox(height: 8),
                       Text(
                         "SEZON DEVAM EDİYOR",
                         style: TextStyle(
-                          color: Color(0xFFFCD34D),
+                          color: AppColors.accentAmber,
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
                           letterSpacing: 1.5,
@@ -1058,7 +544,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                         "Masada rekabet tüm hızıyla sürüyor.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFF94A3B8),
+                          color: AppColors.textSecondary,
                           fontSize: 13,
                           height: 1.4,
                         ),
@@ -1080,19 +566,20 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _heroAksiyonButonu(
+                        sezonHeroAksiyonButonu(
                           icon: Icons.gavel,
-                          renk: const Color(0xFFFCD34D),
+                          renk: AppColors.accentAmber,
                           etiket: "Sonlandır",
                           onTap: () async => _sezonuSonlandir(tekSezon),
                         ),
-                        _heroAksiyonButonu(
+                        sezonHeroAksiyonButonu(
                           icon: Icons.edit,
-                          renk: const Color(0xFFE2E8F0),
+                          renk: AppColors.textPrimary,
                           etiket: "Düzenle",
-                          onTap: () => _sezonFormuGoster(sezon: tekSezon),
+                          onTap: () =>
+                              sezonFormuDiyalog(context, sezon: tekSezon),
                         ),
-                        _heroAksiyonButonu(
+                        sezonHeroAksiyonButonu(
                           icon: Icons.delete,
                           renk: Colors.amber.shade700,
                           etiket: "Sil",
@@ -1100,26 +587,24 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                             final onay = await showDialog<bool>(
                               context: context,
                               builder: (d) => AlertDialog(
-                                backgroundColor: const Color(0xFF111A2B),
+                                backgroundColor: AppColors.cardBg,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(18),
                                 ),
                                 title: const Text(
                                   'Sezonu Sil',
-                                  style: TextStyle(color: Color(0xFFF8FAFC)),
+                                  style: AppTextStyles.bodyPrimary,
                                 ),
                                 content: const Text(
                                   'Bu sezonu ve altındaki TÜM verileri kalıcı olarak silmek istediğinize emin misiniz?',
-                                  style: TextStyle(color: Color(0xFF94A3B8)),
+                                  style: AppTextStyles.bodySecondary,
                                 ),
                                 actions: [
                                   TextButton(
                                     onPressed: () => Navigator.pop(d, false),
                                     child: const Text(
                                       'İptal',
-                                      style: TextStyle(
-                                        color: Color(0xFF94A3B8),
-                                      ),
+                                      style: AppTextStyles.bodySecondary,
                                     ),
                                   ),
                                   TextButton(
@@ -1127,7 +612,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                                     child: Text(
                                       'Sil',
                                       style: TextStyle(
-                                        color: Colors.amber.shade700,
+                                        color: AppColors.accentAmber,
                                       ),
                                     ),
                                   ),
@@ -1152,9 +637,140 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
   }
 
   @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.accentAmber),
+        ),
+      );
+    }
+
+    final liste = _tumSezonlar
+        .where(
+          (s) =>
+              _gosterArsiv ? s.sezonSampiyon != null : s.sezonSampiyon == null,
+        )
+        .toList();
+
+    return Scaffold(
+      backgroundColor: AppColors.bgPrimary,
+      appBar: AppBar(
+        title: Text(
+          _gosterArsiv ? 'Sonuçlanan Sezonlar' : 'Aktif Sezonlar',
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+          ),
+        ),
+        backgroundColor: AppColors.bgSecondary,
+        foregroundColor: AppColors.textPrimary,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: liste.isEmpty
+                ? sezonBosDurum(_gosterArsiv)
+                : _gosterArsiv
+                ? _arsivListeGorunumu(liste)
+                : _aktifHeroGorunumu(liste.first),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 16.0,
+              right: 90.0,
+              top: 12.0,
+              bottom: 80.0,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() => _gosterArsiv = !_gosterArsiv),
+                icon: Icon(
+                  _gosterArsiv ? Icons.play_circle_outline : Icons.history,
+                  color: AppColors.textPrimary,
+                ),
+                label: Text(
+                  _gosterArsiv ? "Aktif Sezonlara Dön" : "Eski Sezonlar",
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: const BorderSide(color: AppColors.divider, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 80.0),
+        child: FloatingActionButton(
+          // lib/pages/sezon/sezonlar_sayfasi.dart - FloatingActionButton onPressed
+
+          // lib/pages/sezon/sezonlar_sayfasi.dart - FloatingActionButton onPressed
+          onPressed: _yukleniyor
+              ? null
+              : () async {
+                  final safeContext = context;
+
+                  setState(() => _yukleniyor = true);
+
+                  try {
+                    final buGruptaAktifVar = _tumSezonlar.any(
+                      (s) => s.sezonSampiyon == null,
+                    );
+
+                    if (!mounted) return;
+
+                    if (buGruptaAktifVar) {
+                      // ✅ safeContext kullanılıyor (Async gap yok)
+                      ScaffoldMessenger.of(safeContext).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "Bu grupta zaten devam eden aktif bir sezon bulunuyor!",
+                          ),
+                          backgroundColor: Colors.orangeAccent,
+                          duration: Duration(seconds: 4),
+                        ),
+                      );
+                      return;
+                    }
+
+                    await SezonServisi().yeniSezonOlustur(
+                      tarih: DateTime.now().toString().substring(0, 10),
+                      isLowestWins: true,
+                    );
+                  } catch (e) {
+                    if (safeContext.mounted) {
+                      ScaffoldMessenger.of(safeContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Sezon oluşturulamadı: $e'),
+                          backgroundColor: AppColors.accentRed,
+                        ),
+                      );
+                    }
+                  } finally {
+                    // ✅ 5. ADIM: LOADING'I KAPAT
+                    if (mounted) setState(() => _yukleniyor = false);
+                  }
+                },
+          backgroundColor: AppColors.accentAmber,
+          child: const Icon(Icons.add, color: Color(0xFF1A1206)),
+        ),
+      ),
+    );
+  }
+
+  @override
   void dispose() {
-    _tarihController.dispose();
-    _sampiyonController.dispose();
+    _sezonStreamSub?.cancel();
     super.dispose();
   }
 }

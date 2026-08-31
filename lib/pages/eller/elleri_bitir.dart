@@ -1,10 +1,8 @@
+// lib/pages/eller/elleri_bitir.dart
 import 'package:flutter/material.dart';
+import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
 
-// ─────────────────────────────────────────────────────────────
-// ELLER FAB — yeni el ekleme düğmesi.
-//   oyunBitti=true ise geceye gömülür: son ele ulaşıldığında ekleme yok.
-//   (Bitir/Paylaş artık burada değil; Paylaş koordinatörde AppBar'da.)
-// ─────────────────────────────────────────────────────────────
+/// ELLER FAB — yeni el ekleme düğmesi.
 class EllerFab extends StatelessWidget {
   final bool oyunBitti;
   final VoidCallback? onPressed;
@@ -17,11 +15,9 @@ class EllerFab extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 24),
       child: FloatingActionButton.extended(
         onPressed: oyunBitti ? null : onPressed,
-        backgroundColor: oyunBitti
-            ? const Color(0xFF1E293B)
-            : const Color(0xFFF59E0B),
+        backgroundColor: oyunBitti ? AppColors.cardBg : AppColors.accentAmber,
         foregroundColor: oyunBitti
-            ? const Color(0xFF64748B)
+            ? AppColors.textSecondary
             : const Color(0xFF1A1206),
         elevation: oyunBitti ? 0 : 8,
         icon: Icon(oyunBitti ? Icons.block : Icons.add),

@@ -1,8 +1,9 @@
 // lib/pages/salon/salon_sayfasi.dart
 import 'package:flutter/material.dart';
-import 'package:yaz_boz/models/cagri.dart';
+import 'package:yaz_boz/models/cagri_model.dart';
 import 'package:yaz_boz/services/cagri_servisi.dart';
 import 'package:yaz_boz/pages/salon/salon_icerik.dart';
+import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
 
 class SalonSayfasi extends StatefulWidget {
   final String cagriId;
@@ -25,12 +26,12 @@ class _SalonSayfasiState extends State<SalonSayfasi> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1C),
+      backgroundColor: AppColors.bgPrimary,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: const Color(0xFFE2E8F0),
+        foregroundColor: AppColors.textPrimary,
       ),
       body: StreamBuilder<Cagri?>(
         stream: _stream,
@@ -40,7 +41,7 @@ class _SalonSayfasiState extends State<SalonSayfasi> {
           // ✅ Bekleme veya boş durum
           if (snap.connectionState == ConnectionState.waiting || c == null) {
             return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
+              child: CircularProgressIndicator(color: AppColors.accentAmber),
             );
           }
 

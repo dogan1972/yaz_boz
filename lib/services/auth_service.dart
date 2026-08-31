@@ -1,9 +1,9 @@
+// lib/services/auth_service.dart
 import 'dart:async';
 import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:yaz_boz/services/firestore_service.dart';
-import 'package:yaz_boz/models/kullanici.dart';
+import 'package:yaz_boz/models/kullanici_model.dart';
 import 'package:flutter/material.dart';
 
 class AuthException implements Exception {
@@ -22,7 +22,6 @@ class AuthService {
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
   static const _kol = 'kullanicilar';
 
-  // ✅ hang'e karşı üst sınır — hiçbir await sonsuz kalamaz
   static const _authTimeout = Duration(seconds: 15);
   static const _profilTimeout = Duration(seconds: 8);
 
@@ -53,40 +52,43 @@ class AuthService {
     throw const AuthException('Davet kodu üretilemedi, tekrar deneyin.');
   }
 
-  String _nickUret(String email) {
-    final onEk = email.split('@').first;
-    final parcalar = onEk.split(RegExp(r'[._\-]')).where((w) => w.isNotEmpty);
-    if (parcalar.isEmpty) return 'Oyuncu';
-    return parcalar
-        .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
-        .join(' ');
-  }
-
   bool _emailGecerliMi(String email) =>
       RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
 
-  // ✅ PROFİL GARANTİSİ — SADECE profil sayfası / çağrı dialog'u için (tembel).
-  //    GİRİŞ ZİNCİRİNDE ÇAĞRILMIYOR → doğru şifre yolu Firestore'a hiç uğramaz.
+  // ✅ GÜNCELLEME: Profil garantilerken Grup ID kontrolü yapılıyor ama ATAMA YAPILMIYOR
+  // Grup ataması SADECE ArkadasServisi.istegiOnayla() üzerinden yapılmalı.
   Future<Kullanici?> profilGarantile() async {
     final u = uid;
     if (u == null) return null;
     final ref = _fs.collection(_kol).doc(u);
     final doc = await ref.get();
-    if (doc.exists) return Kullanici.fromFirestore(doc);
+
+    Kullanici k;
+    if (doc.exists) {
+      k = Kullanici.fromFirestore(doc);
+      // ✅ GRUP KONTROLÜ: Sadece okuma yapıyoruz. Atama yapmıyoruz.
+      // Eğer grupId yoksa null dönecek, bu da kullanıcının henüz bir gruba dahil olmadığını gösterir.
+      return k;
+    }
+
+    // Yeni kullanıcı oluşturma mantığı (genelde signIn sonrası çalışmaz ama garanti olsun diye duruyor)
     final email = _auth.currentUser?.email ?? '';
     final kod = await _benzersizKod();
-    final k = Kullanici(
+
+    // ✅ YENİ KULLANICI GRUPSUZ OLUŞUR. İlk arkadaşlık onayında gruba dahil olur.
+    k = Kullanici(
       uid: u,
-      nick: _nickUret(email),
+      nick: email.split('@').first,
       email: email,
       davetKodu: kod,
       qrPayload: 'yazboz://arkadas/$kod',
+      oyuncuId: u,
+      grupId: null, // ✅ BAŞLANGIÇTA GRUP YOK
     );
     await ref.set(k.toMap());
     return k;
   }
 
-  // ── GİRİŞ — SADECE Auth, 15 sn zaman aşımı, profil YOK ────
   Future<UserCredential> signInWithEmailAndPassword(
     String email,
     String password,
@@ -98,11 +100,11 @@ class AuthService {
     if (!_emailGecerliMi(temizEmail)) {
       throw const AuthException('Geçerli bir e-posta adresi girin.');
     }
+
     try {
       final cred = await _auth
           .signInWithEmailAndPassword(email: temizEmail, password: password)
           .timeout(_authTimeout);
-
       return cred;
     } on TimeoutException {
       throw const AuthException(
@@ -115,12 +117,17 @@ class AuthService {
     }
   }
 
-  // ── KAYIT — Auth zaman aşımı; profil yazma AYRI + kısa zaman aşımı
+  // ── KAYIT — ad soyad + e-posta + şifre → profil(+oyuncuId=UID) ────
   Future<UserCredential> createUserWithEmailAndPassword(
     String email,
     String password,
+    String adSoyad,
   ) async {
     final temizEmail = email.trim();
+    final temizAdSoyad = adSoyad.trim();
+    if (temizAdSoyad.length < 2) {
+      throw const AuthException('Ad soyad en az 2 karakter olmalı.');
+    }
     if (temizEmail.isEmpty || password.isEmpty) {
       throw const AuthException('E-posta ve şifre alanları boş bırakılamaz.');
     }
@@ -130,29 +137,33 @@ class AuthService {
     if (password.length < 6) {
       throw const AuthException('Şifre en az 6 karakter olmalı.');
     }
+
     try {
       final cred = await _auth
           .createUserWithEmailAndPassword(email: temizEmail, password: password)
           .timeout(_authTimeout);
-
       try {
         final uid = cred.user!.uid;
         final kod = await _benzersizKod();
+
+        // ✅ KAYIT SIRASINDA GRUP OLUŞTURULMUYOR. İlk arkadaşlık onayında oluşur.
         await _fs
             .collection(_kol)
             .doc(uid)
             .set(
               Kullanici(
                 uid: uid,
-                nick: _nickUret(temizEmail),
+                nick: temizAdSoyad,
                 email: temizEmail,
                 davetKodu: kod,
                 qrPayload: 'yazboz://arkadas/$kod',
+                oyuncuId: uid,
+                grupId: null, // ✅ BAŞLANGIÇTA GRUP YOK
               ).toMap(),
             )
             .timeout(_profilTimeout);
       } catch (e) {
-        debugPrint(' Profil oluşturma hatası ($uid): $e');
+        debugPrint('❌ Profil oluşturma hatası: $e');
         throw AuthException('Profil oluşturulamadı. Lütfen tekrar deneyin.');
       }
       return cred;
@@ -167,10 +178,11 @@ class AuthService {
     }
   }
 
+  // ✅ GÜNCELLEME: FirestoreService referansı tamamen kaldırıldı
   Future<void> signOut() async {
     try {
       await _auth.signOut();
-      FirestoreService.clearStreamCache();
+      // FirestoreService.clearStreamCache(); ❌ KALDIRILDI
     } catch (e) {
       throw const AuthException('Çıkış yapılırken bir hata oluştu.');
     }

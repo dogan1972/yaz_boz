@@ -12,3 +12,14 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Firebase Config
+android/app/google-services.json
+
+# Kotlin Build Cache
+android/.kotlin/
+*.salive
+
+# Flutter/Dart
+.dart_tool/
+build/

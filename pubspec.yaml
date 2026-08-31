@@ -51,6 +51,8 @@ dependencies:
   audioplayers: ^5.0.0
   uuid: ^4.5.1
   just_audio: ^0.9.36
+  intl: ^0.20.3
+  claude_agent_sdk: ^0.1.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,69 +1,27 @@
+// lib/pages/turnuva/turnuva_sayfasi.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:yaz_boz/services/firestore_service.dart';
+import 'package:yaz_boz/services/turnuva_servisi.dart';
+import 'package:yaz_boz/services/sezon_servisi.dart';
+import 'package:yaz_boz/services/auth_service.dart';
 import 'package:yaz_boz/pages/turnuva/turnuva_detay_sayfasi.dart';
-
-// ─────────────────────────────────────────────────────────────
-// TURNUVA MODELİ  (+ numara)
-// ─────────────────────────────────────────────────────────────
-class Turnuva {
-  final String id;
-  final int? numara;
-  final String sezonId;
-  final String? turTarih;
-  final String? turKazanan;
-  final String? turIkinci;
-  final String? turUcuncu;
-  final String? turKaybeden;
-  final int tursonuc;
-
-  Turnuva({
-    required this.id,
-    this.numara,
-    required this.sezonId,
-    this.turTarih,
-    this.turKazanan,
-    this.turIkinci,
-    this.turUcuncu,
-    this.turKaybeden,
-    required this.tursonuc,
-  });
-
-  factory Turnuva.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return Turnuva(
-      id: doc.id,
-      numara: (data['numara'] as num?)?.toInt(),
-      sezonId: data['sezonId'] ?? '',
-      turTarih: data['turTarih'] ?? 'Tarih Yok',
-      turKazanan: data['turKazanan'],
-      turIkinci: data['turIkinci'],
-      turUcuncu: data['turUcuncu'],
-      turKaybeden: data['turKaybeden'],
-      tursonuc: data['tursonuc'] ?? 0,
-    );
-  }
-}
+import 'package:yaz_boz/models/turnuva_model.dart';
+import 'package:yaz_boz/pages/turnuva/turnuva_widgets.dart';
+import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
 
 class TurnuvaSayfasi extends StatefulWidget {
   const TurnuvaSayfasi({super.key});
-
   @override
   State<TurnuvaSayfasi> createState() => _TurnuvaSayfasiState();
 }
 
 class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
-  final FirestoreService _firestoreService = FirestoreService();
-  final TextEditingController _tarihController = TextEditingController();
-  final TextEditingController _kazananController = TextEditingController();
-  final TextEditingController _ikinciController = TextEditingController();
-  final TextEditingController _ucuncuController = TextEditingController();
-  final TextEditingController _kaybedenController = TextEditingController();
-
   List<Turnuva> _tumTurnuvalar = [];
   bool _isLoading = true;
   bool _gosterArsiv = false;
   Map<String, int> _sezonNumara = {};
+  StreamSubscription<List<Turnuva>>? _turnuvaStreamSub;
 
   @override
   void initState() {
@@ -73,14 +31,14 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
   }
 
   void _verileriDinle() {
-    _firestoreService.getCollectionStream('turnuva').listen((snapshot) {
+    _turnuvaStreamSub = TurnuvaServisi().tumTurnuvalarStreami().listen((
+      yeniListe,
+    ) {
       if (!mounted) return;
-      final yeni = snapshot.docs.map((d) => Turnuva.fromFirestore(d)).toList()
-        ..sort((a, b) => (b.turTarih ?? '').compareTo(a.turTarih ?? ''));
-      if (yeni.length != _tumTurnuvalar.length ||
-          !_listelerEsitMi(yeni, _tumTurnuvalar)) {
+      if (yeniListe.length != _tumTurnuvalar.length ||
+          !_listelerEsitMi(yeniListe, _tumTurnuvalar)) {
         setState(() {
-          _tumTurnuvalar = yeni;
+          _tumTurnuvalar = yeniListe;
           _isLoading = false;
         });
       } else if (_isLoading) {
@@ -105,12 +63,16 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
 
   Future<void> _sezonlariYukle() async {
     try {
-      final snap = await _firestoreService.getCollection('sezonlar');
+      final k = await AuthService().profilGarantile();
+      if (!mounted || k?.grupId == null) return;
+      final snap = await FirebaseFirestore.instance
+          .collection('sezonlar')
+          .where('grupId', isEqualTo: k?.grupId)
+          .get();
       if (!mounted) return;
       final m = <String, int>{};
       for (final d in snap.docs) {
-        final n = ((d.data() as Map<String, dynamic>)['numara'] as num?)
-            ?.toInt();
+        final n = ((d.data())['numara'] as num?)?.toInt();
         if (n != null) m[d.id] = n;
       }
       setState(() => _sezonNumara = m);
@@ -119,342 +81,28 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
     }
   }
 
-  Widget _ciftRozet(
-    int? sezonNo,
-    int? turnuvaNo, {
-    required bool koyu,
-    bool yatay = false,
-  }) {
-    final sezon = _rozetSatir(
-      'Sezon No',
-      sezonNo,
-      renk: koyu ? Colors.cyan.shade200 : const Color(0xFF60A5FA),
-      koyu: koyu,
-    );
-    final turnuva = _rozetSatir(
-      'Turnuva No',
-      turnuvaNo,
-      renk: koyu ? Colors.amber.shade200 : const Color(0xFFA78BFA),
-      koyu: koyu,
-    );
-    if (yatay) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [sezon, const SizedBox(width: 14), turnuva],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [sezon, const SizedBox(height: 5), turnuva],
-    );
-  }
-
-  Widget _rozetSatir(
-    String etiket,
-    int? n, {
-    required Color renk,
-    required bool koyu,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          etiket,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-            color: koyu
-                ? Colors.white.withValues(alpha: 0.7)
-                : const Color(0xFF94A3B8),
-          ),
-        ),
-        const SizedBox(width: 6),
-        n == null
-            ? Text(
-                '—',
-                style: TextStyle(
-                  color: koyu ? Colors.white70 : const Color(0xFF64748B),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              )
-            : _numaraRozeti(n, renk: renk, font: 12),
-      ],
-    );
-  }
-
-  Widget _numaraRozeti(int? n, {Color renk = Colors.purple, double? font}) {
-    if (n == null) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: renk.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: renk.withValues(alpha: 0.55), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: renk.withValues(alpha: 0.30),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Text(
-        '#$n',
-        style: TextStyle(
-          color: renk,
-          fontWeight: FontWeight.w800,
-          fontSize: font ?? 13,
-          letterSpacing: 0.6,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      ),
-    );
-  }
-
-  Widget _blokAyirac([double h = 22]) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Container(
-        width: 1.5,
-        height: h,
-        decoration: BoxDecoration(
-          color: const Color(0xFF94A3B8).withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(1),
-        ),
-      ),
-    );
-  }
-
-  Widget _sonucSutunu(String emoji, String etiket, String? ad, Color renk) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 13)),
-            const SizedBox(width: 5),
-            Text(
-              etiket,
-              style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-                color: Color(0xFF94A3B8),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 3),
-        Text(
-          (ad == null || ad.isEmpty) ? '—' : ad,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w900,
-            color: renk,
-            letterSpacing: -0.2,
-            height: 1.1,
-          ),
-        ),
-      ],
-    );
-  }
-
-  InputDecoration _formDeco(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Color(0xFF64748B)),
-      filled: true,
-      fillColor: const Color(0xFF0B1220),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF1E293B)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF1E293B)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFF59E0B)),
-      ),
-    );
-  }
-
-  void _turnuvaFormuGoster({Turnuva? turnuva}) {
-    if (turnuva != null) {
-      _tarihController.text = turnuva.turTarih ?? '';
-      _kazananController.text = turnuva.turKazanan ?? '';
-      _ikinciController.text = turnuva.turIkinci ?? '';
-      _ucuncuController.text = turnuva.turUcuncu ?? '';
-      _kaybedenController.text = turnuva.turKaybeden ?? '';
-    } else {
-      _tarihController.text = DateTime.now().toString().substring(0, 10);
-      _kazananController.clear();
-      _ikinciController.clear();
-      _ucuncuController.clear();
-      _kaybedenController.clear();
-    }
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF111A2B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Text(
-          turnuva == null ? 'Yeni Turnuva Ekle' : 'Turnuvayı Düzenle',
-          style: const TextStyle(color: Color(0xFFF8FAFC)),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _tarihController,
-                style: const TextStyle(color: Color(0xFFE2E8F0)),
-                decoration: _formDeco('Turnuva Tarihi / Adı'),
-              ),
-              if (turnuva != null) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _kazananController,
-                  style: const TextStyle(color: Color(0xFFE2E8F0)),
-                  decoration: _formDeco('🏆 Şampiyon'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _ikinciController,
-                  style: const TextStyle(color: Color(0xFFE2E8F0)),
-                  decoration: _formDeco('🥈 İkinci'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _ucuncuController,
-                  style: const TextStyle(color: Color(0xFFE2E8F0)),
-                  decoration: _formDeco('🥉 Üçüncü'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _kaybedenController,
-                  style: const TextStyle(color: Color(0xFFE2E8F0)),
-                  decoration: _formDeco('📉 Sonuncu'),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text(
-              'İptal',
-              style: TextStyle(color: Color(0xFF94A3B8)),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF59E0B),
-              foregroundColor: const Color(0xFF1A1206),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () async {
-              if (_tarihController.text.trim().isEmpty) return;
-              try {
-                final sezonSnapshot = await _firestoreService.getCollection(
-                  'sezonlar',
-                );
-                final aktifSezonDoc = sezonSnapshot.docs.firstWhere(
-                  (doc) =>
-                      (doc.data() as Map<String, dynamic>)['sezonSampiyon'] ==
-                      null,
-                  orElse: () => throw Exception('Aktif sezon bulunamadı!'),
-                );
-
-                final data = <String, dynamic>{
-                  'sezonId': aktifSezonDoc.id,
-                  'turTarih': _tarihController.text.trim(),
-                  'turKazanan': _kazananController.text.trim().isEmpty
-                      ? null
-                      : _kazananController.text.trim(),
-                  'turIkinci': _ikinciController.text.trim().isEmpty
-                      ? null
-                      : _ikinciController.text.trim(),
-                  'turUcuncu': _ucuncuController.text.trim().isEmpty
-                      ? null
-                      : _ucuncuController.text.trim(),
-                  'turKaybeden': _kaybedenController.text.trim().isEmpty
-                      ? null
-                      : _kaybedenController.text.trim(),
-                  'tursonuc': _kazananController.text.trim().isNotEmpty ? 1 : 0,
-                };
-
-                if (turnuva == null) {
-                  data['numara'] = await _firestoreService.nextNumber(
-                    'turnuva',
-                  );
-                  await _firestoreService.setDocument(
-                    'turnuva',
-                    FirebaseFirestore.instance.collection('turnuva').doc().id,
-                    data,
-                  );
-                } else {
-                  await _firestoreService.updateDocument(
-                    'turnuva',
-                    turnuva.id,
-                    data,
-                  );
-                }
-                if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-              } catch (e) {
-                debugPrint("Turnuva form hatası: $e");
-                if (!dialogContext.mounted) return;
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(
-                    content: Text("Hata: $e"),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text(
-              'Kaydet',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _turnuvayiSonlandir(Turnuva tekTurnuva) async {
     try {
       if (!mounted) return;
 
-      final tumOyunlarSnap = await _firestoreService.getCollection('oyunlar');
+      // ✅ 1. ADIM: Oyun sayısını ve durumunu kontrol et
+      final k = await AuthService().profilGarantile();
+      if (k == null || k.grupId == null) return;
+
+      final oyunlarSnap = await FirebaseFirestore.instance
+          .collection('oyunlar')
+          .where('turId', isEqualTo: tekTurnuva.id)
+          .where('grupId', isEqualTo: k.grupId)
+          .get();
+
       if (!mounted) return;
 
-      final turnuvaOyunlari = tumOyunlarSnap.docs
-          .where(
-            (d) => (d.data() as Map<String, dynamic>)['turId'] == tekTurnuva.id,
-          )
-          .toList();
-
-      final aktifOyun = turnuvaOyunlari
-          .where(
-            (d) => (d.data() as Map<String, dynamic>)['oyunKazanan'] == null,
-          )
+      // Aktif (bitmemiş) oyun varsa engelle
+      final aktifOyun = oyunlarSnap.docs
+          .where((d) => (d.data())['oyunKazanan'] == null)
           .length;
+
       if (aktifOyun > 0) {
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -467,144 +115,229 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
         return;
       }
 
-      if (turnuvaOyunlari.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Bu turnuvada hiç oyun oynanmamış!")),
+      // ✅ BOŞ TURNUVA UYARISI
+      if (oyunlarSnap.docs.isEmpty) {
+        final bosOnay = await showDialog<bool>(
+          context: context,
+          builder: (d) => AlertDialog(
+            backgroundColor: AppColors.cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: AppColors.accentAmber),
+                SizedBox(width: 8),
+                Text('Turnuva Boş!', style: AppTextStyles.bodyPrimary),
+              ],
+            ),
+            content: const Text(
+              'Bu turnuvada hiç oyun oynanmamış. Yine de sonlandırmak istiyor musunuz?',
+              style: AppTextStyles.bodySecondary,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(d, false),
+                child: const Text('Vazgeç', style: AppTextStyles.bodySecondary),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(d, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accentAmber,
+                ),
+                child: const Text(
+                  'Evet, Sonlandır',
+                  style: TextStyle(
+                    color: Color(0xFF1A1206),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
-        return;
+        if (bosOnay != true || !mounted) return;
       }
 
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
-        ),
-      );
+      // ✅ 2. ADIM: Şampiyon ve Sonuncu Hesaplama (DOĞRU MANTIK)
+      String sampiyon = '';
+      String? sonuncu;
 
-      Map<String, int> oyuncuGalibiyet = {};
-      Map<String, int> oyuncuMaglubiyet = {};
-      Set<String> tumOyuncularSet = {};
+      if (oyunlarSnap.docs.isNotEmpty) {
+        Map<String, int> galibiyetler = {};
+        Set<String> oyuncular = {};
 
-      for (var doc in turnuvaOyunlari) {
-        final data = doc.data() as Map<String, dynamic>;
-        if (data['oyuncu'] != null) {
-          for (var s in data['oyuncu'].toString().split(RegExp(r'[,\n]'))) {
-            final o = s.trim();
-            if (o.isNotEmpty) tumOyuncularSet.add(o);
-          }
-        }
-        final kaybeden = data['oyunKaybeden'];
-        if (kaybeden != null && kaybeden.toString().isNotEmpty) {
-          final k = kaybeden.toString();
-          oyuncuMaglubiyet[k] = (oyuncuMaglubiyet[k] ?? 0) + 1;
-          for (var oyuncu in tumOyuncularSet) {
-            if (oyuncu != k) {
-              oyuncuGalibiyet[oyuncu] = (oyuncuGalibiyet[oyuncu] ?? 0) + 1;
+        // 1. GEÇİŞ: Tüm oyuncuları topla
+        for (var doc in oyunlarSnap.docs) {
+          final data = doc.data();
+          if (data['oyuncu'] != null) {
+            for (var s in data['oyuncu'].toString().split(RegExp(r'[,\n]'))) {
+              final o = s.trim();
+              if (o.isNotEmpty) oyuncular.add(o);
             }
           }
         }
+
+        // Herkesi 0 galibiyetle başlat
+        for (final o in oyuncular) {
+          galibiyetler[o] = 0;
+        }
+
+        // 2. GEÇİŞ: Galibiyetleri say
+        // KURAL: Bir oyunda kaybeden dışındaki HERKES +1 galibiyet alır.
+        for (var doc in oyunlarSnap.docs) {
+          final data = doc.data();
+          final kaybeden = data['oyunKaybeden'];
+
+          if (kaybeden != null && kaybeden.toString().isNotEmpty) {
+            final kAdi = kaybeden.toString();
+            // Kaybeden hariç tüm oyunculara galibiyet ekle
+            for (var oyuncu in oyuncular) {
+              if (oyuncu != kAdi) {
+                galibiyetler[oyuncu] = (galibiyetler[oyuncu] ?? 0) + 1;
+              }
+            }
+          }
+        }
+
+        // ✅ ŞAMPİYON: En çok galibiyeti alan
+        var sirali = galibiyetler.entries.toList();
+        sirali.sort((a, b) => b.value.compareTo(a.value)); // AZALAN SIRALAMA
+
+        // Eğer birden fazla kişi aynı en yüksek galibiyete sahipse,
+        // ilk sırada olanı şampiyon alıyoruz (veya tie-breaker eklenebilir)
+        sampiyon = sirali.isNotEmpty ? sirali.first.key : '';
+
+        // ✅ SONUNCU: En az galibiyeti alan (En çok kaybeden)
+        var sonSirali = galibiyetler.entries.toList()
+          ..sort((a, b) => a.value.compareTo(b.value)); // ARTAN SIRALAMA
+        sonuncu = sonSirali.isNotEmpty ? sonSirali.first.key : null;
+
+        // Eğer şampiyon ve sonuncu aynı kişi çıkarsa (tek oyuncu vb.), sonuncuyu null yap
+        if (sampiyon == sonuncu) sonuncu = null;
+      } else {
+        sampiyon = '-';
       }
 
-      var siraliListe = oyuncuGalibiyet.entries.toList();
-      siraliListe.sort((a, b) => b.value.compareTo(a.value));
+      if (!mounted) return;
 
-      String? sampiyon = siraliListe.isNotEmpty
-          ? siraliListe.first.key
-          : (tumOyuncularSet.isNotEmpty ? tumOyuncularSet.first : null);
-      String? sonuncu = oyuncuMaglubiyet.isNotEmpty
-          ? oyuncuMaglubiyet.entries
-                .reduce((a, b) => a.value > b.value ? a : b)
-                .key
-          : null;
+      // ✅ 3. ADIM: Onay Dialogu
+      // ✅ 3. ADIM: Onay Dialogu (KLAVYE DÜZELTMESİ)
+      final onay = await showDialog<bool>(
+        context: context,
+        builder: (d) => StatefulBuilder(
+          // ✅ StatefulBuilder eklendi
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.cardBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: Text(
+                oyunlarSnap.docs.isEmpty
+                    ? 'Boş Turnuvayı Kapat'
+                    : 'Turnuvayı Sonlandır',
+              ),
+              content: SingleChildScrollView(
+                // ✅ Scroll eklendi
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (oyunlarSnap.docs.isEmpty)
+                      const Text(
+                        "Bu turnuva boş olarak kapatılacak.",
+                        style: AppTextStyles.bodySecondary,
+                      )
+                    else ...[
+                      Text(
+                        "Hesaplanan Şampiyon: $sampiyon",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (sonuncu != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            "Sonuncu: $sonuncu",
+                            style: const TextStyle(color: AppColors.accentRed),
+                          ),
+                        ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      autofocus: true, // ✅ İmleç otomatik odaklanır
+                      controller: TextEditingController(text: sampiyon),
+                      style: const TextStyle(color: AppColors.textPrimary),
+                      decoration: const InputDecoration(
+                        labelText: 'Şampiyon / Durum',
+                        border: OutlineInputBorder(),
+                        labelStyle: TextStyle(color: AppColors.textHint),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 16,
+                        ),
+                      ),
+                      onChanged: (val) => setDialogState(
+                        () => sampiyon = val,
+                      ), // ✅ Anlık güncelleme
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(d, false),
+                  child: const Text(
+                    'İptal',
+                    style: AppTextStyles.bodySecondary,
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(d, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accentAmber,
+                  ),
+                  child: const Text(
+                    'Onayla',
+                    style: TextStyle(
+                      color: Color(0xFF1A1206),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+      if (onay != true || !mounted || sampiyon.trim().isEmpty) return;
+
+      // ✅ 4. ADIM: İşlemi tamamla
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
+      await TurnuvaServisi().turnuvayiSonlandir(
+        tekTurnuva.id,
+        sampiyon.trim(),
+        sonuncu,
+      );
 
       if (!mounted) return;
       Navigator.pop(context);
-
-      final onay = await showDialog<bool>(
-        context: context,
-        builder: (d) => AlertDialog(
-          backgroundColor: const Color(0xFF111A2B),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.emoji_events, color: Color(0xFFFCD34D), size: 26),
-              SizedBox(width: 8),
-              Text(
-                'Turnuvayı Sonlandır',
-                style: TextStyle(color: Color(0xFFF8FAFC)),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Hesaplanan Şampiyon: ${sampiyon ?? 'Belirsiz'}",
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: Color(0xFFE2E8F0),
-                ),
-              ),
-              if (sonuncu != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    "Sonuncu: $sonuncu",
-                    style: const TextStyle(color: Color(0xFFF87171)),
-                  ),
-                ),
-              const SizedBox(height: 10),
-              Text(
-                "Emin misiniz?",
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text(
-                'İptal',
-                style: TextStyle(color: Color(0xFF94A3B8)),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(d, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF59E0B),
-                foregroundColor: const Color(0xFF1A1206),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text(
-                'Sonlandır',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
-          ],
-        ),
-      );
-
-      if (onay != true || !mounted) return;
-
-      await _firestoreService.updateDocument('turnuva', tekTurnuva.id, {
-        'turKazanan': sampiyon,
-        'turKaybeden': sonuncu,
-        'tursonuc': 1,
-      });
-
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Turnuva Bitti! Şampiyon: $sampiyon"),
+          content: Text(
+            oyunlarSnap.docs.isEmpty
+                ? "Boş turnuva kapatıldı."
+                : "Turnuva Bitti! Şampiyon: $sampiyon",
+          ),
           backgroundColor: Colors.green.shade800,
           duration: const Duration(seconds: 3),
         ),
@@ -614,7 +347,10 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       if (!mounted) return;
       if (Navigator.canPop(context)) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text("Hata: $e"),
+          backgroundColor: AppColors.accentRed,
+        ),
       );
     }
   }
@@ -626,32 +362,10 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
+          child: CircularProgressIndicator(color: AppColors.accentAmber),
         ),
       );
-
-      final tumOyunlarSnap = await _firestoreService.getCollection('oyunlar');
-      final silinecekOyunlar = tumOyunlarSnap.docs
-          .where(
-            (d) => (d.data() as Map<String, dynamic>)['turId'] == tekTurnuva.id,
-          )
-          .toList();
-      for (var oyunDoc in silinecekOyunlar) {
-        final oyunId = oyunDoc.id;
-        final tumEllerSnap = await _firestoreService.getCollection('eller');
-        final silinecekEller = tumEllerSnap.docs
-            .where(
-              (d) => (d.data() as Map<String, dynamic>)['oyunId'] == oyunId,
-            )
-            .map((d) => d.id)
-            .toList();
-        for (var elId in silinecekEller) {
-          await _firestoreService.deleteDocument('eller', elId);
-        }
-        await _firestoreService.deleteDocument('oyunlar', oyunId);
-      }
-      await _firestoreService.deleteDocument('turnuva', tekTurnuva.id);
-
+      await TurnuvaServisi().turnuvayiSil(tekTurnuva.id);
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -667,197 +381,10 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Silme sırasında hata oluştu: $e"),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.accentRed,
         ),
       );
     }
-  }
-
-  Widget _heroAksiyonButonu({
-    required IconData icon,
-    required Color renk,
-    required String etiket,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      hoverColor: Colors.white.withValues(alpha: 0.10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: renk, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              etiket,
-              style: TextStyle(
-                color: renk.withValues(alpha: 0.92),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF0A0F1C),
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
-        ),
-      );
-    }
-
-    final gosterilecekListe = _tumTurnuvalar
-        .where(
-          (t) => _gosterArsiv ? t.turKazanan != null : t.turKazanan == null,
-        )
-        .toList();
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1C),
-      appBar: AppBar(
-        title: Text(
-          _gosterArsiv ? 'Eski Turnuvalar' : 'Aktif Turnuvalar',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-          ),
-        ),
-        backgroundColor: const Color(0xFF0B1220),
-        foregroundColor: const Color(0xFFF8FAFC),
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: gosterilecekListe.isEmpty
-                ? _bosDurum()
-                : _gosterArsiv
-                ? _arsivListeGorunumu(gosterilecekListe)
-                : _aktifHeroGorunumu(gosterilecekListe.first),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(
-              left: 16.0,
-              right: 90.0,
-              top: 12.0,
-              bottom: 80.0,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => setState(() => _gosterArsiv = !_gosterArsiv),
-                icon: Icon(
-                  _gosterArsiv ? Icons.play_circle_outline : Icons.history,
-                  color: const Color(0xFFE2E8F0),
-                ),
-                label: Text(
-                  _gosterArsiv ? "Aktif Turnuvalara Dön" : "Eski Turnuvalar",
-                  style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: Color(0xFF334155), width: 1.5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 80.0),
-        child: FloatingActionButton(
-          onPressed: () async {
-            final messenger = ScaffoldMessenger.of(context);
-
-            if (_gosterArsiv) {
-              messenger.showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "Arşivdeki turnuvalar salt okunurdur; yeni turnuva eklenemez.",
-                  ),
-                  backgroundColor: Colors.blueGrey,
-                ),
-              );
-              return;
-            }
-
-            try {
-              final snap = await _firestoreService.getCollection('sezonlar');
-              final aktifSezonVar = snap.docs.any(
-                (d) =>
-                    (d.data() as Map<String, dynamic>)['sezonSampiyon'] == null,
-              );
-              if (!mounted) return;
-              if (!aktifSezonVar) {
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text("⚠️ Önce aktif bir SEZON başlatmalısınız!"),
-                    backgroundColor: Colors.orangeAccent,
-                    duration: Duration(seconds: 4),
-                  ),
-                );
-                return;
-              }
-            } catch (e) {
-              debugPrint("Aktif sezon kontrolü hatası: $e");
-              if (!mounted) return;
-            }
-
-            _turnuvaFormuGoster();
-          },
-          backgroundColor: const Color(0xFFF59E0B),
-          child: const Icon(Icons.add, color: Color(0xFF1A1206)),
-        ),
-      ),
-    );
-  }
-
-  Widget _bosDurum() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            _gosterArsiv
-                ? Icons.inventory_2_outlined
-                : Icons.emoji_events_outlined,
-            size: 64,
-            color: const Color(0xFF334155),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            _gosterArsiv ? 'Arşivde turnuva yok.' : 'Aktif turnuva bulunmuyor.',
-            style: const TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _gosterArsiv
-                ? 'Sonlanan turnuvalar burada listelenecek.'
-                : 'Yeni turnuva başlatmak için + butonuna dokun.',
-            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _arsivListeGorunumu(List<Turnuva> turnuvalar) {
@@ -866,11 +393,10 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       itemCount: turnuvalar.length,
       itemBuilder: (itemContext, index) {
         final tekTurnuva = turnuvalar[index];
-
         return Padding(
           padding: const EdgeInsets.only(bottom: 14),
           child: Material(
-            color: const Color(0xFF111A2B),
+            color: AppColors.cardBg,
             borderRadius: BorderRadius.circular(18),
             elevation: 0,
             child: InkWell(
@@ -890,7 +416,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFF1E293B)),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.3),
@@ -904,7 +430,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // altın cilt — korundu
                       Container(
                         width: 6,
                         decoration: const BoxDecoration(
@@ -952,13 +477,13 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
                                     children: [
-                                      _rozetSatir(
+                                      turnuvaRozetSatir(
                                         'Sezon No',
                                         _sezonNumara[tekTurnuva.sezonId],
-                                        renk: const Color(0xFF60A5FA),
+                                        renk: AppColors.accentBlue,
                                         koyu: true,
                                       ),
-                                      _blokAyirac(22),
+                                      turnuvaBlokAyirac(22),
                                       Expanded(
                                         child: Text(
                                           tekTurnuva.turTarih ?? 'Tarih Yok',
@@ -968,16 +493,16 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                           style: const TextStyle(
                                             fontWeight: FontWeight.w800,
                                             fontSize: 14,
-                                            color: Color(0xFFF8FAFC),
+                                            color: AppColors.textPrimary,
                                             letterSpacing: -0.2,
                                           ),
                                         ),
                                       ),
-                                      _blokAyirac(22),
-                                      _rozetSatir(
+                                      turnuvaBlokAyirac(22),
+                                      turnuvaRozetSatir(
                                         'Turnuva No',
                                         tekTurnuva.numara,
-                                        renk: const Color(0xFFA78BFA),
+                                        renk: AppColors.accentPurple,
                                         koyu: true,
                                       ),
                                     ],
@@ -988,20 +513,20 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                         CrossAxisAlignment.center,
                                     children: [
                                       Expanded(
-                                        child: _sonucSutunu(
-                                          '🏆',
+                                        child: turnuvaSonucSutunu(
+                                          '',
                                           'KAZANAN',
                                           tekTurnuva.turKazanan,
-                                          const Color(0xFFFCD34D),
+                                          AppColors.accentAmber,
                                         ),
                                       ),
-                                      _blokAyirac(34),
+                                      turnuvaBlokAyirac(34),
                                       Expanded(
-                                        child: _sonucSutunu(
-                                          '📉',
+                                        child: turnuvaSonucSutunu(
+                                          '',
                                           'KAYBEDEN',
                                           tekTurnuva.turKaybeden,
-                                          const Color(0xFFF87171),
+                                          AppColors.accentRed,
                                         ),
                                       ),
                                     ],
@@ -1053,12 +578,12 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
               ),
               borderRadius: BorderRadius.circular(24.0),
               border: Border.all(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
+                color: AppColors.accentAmber.withValues(alpha: 0.25),
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.22),
+                  color: AppColors.accentAmber.withValues(alpha: 0.22),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -1067,7 +592,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
             clipBehavior: Clip.antiAlias,
             child: Stack(
               children: [
-                // amber ambient — kupa/ödül teması (korundu)
                 Positioned(
                   right: -50,
                   top: -70,
@@ -1114,7 +638,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _ciftRozet(
+                                turnuvaCiftRozet(
                                   _sezonNumara[tekTurnuva.sezonId],
                                   tekTurnuva.numara,
                                   koyu: true,
@@ -1123,7 +647,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                 Text(
                                   tekTurnuva.turTarih ?? 'Tarih Yok',
                                   style: const TextStyle(
-                                    color: Color(0xFFF8FAFC),
+                                    color: AppColors.textPrimary,
                                     fontSize: 30,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: -0.5,
@@ -1139,19 +663,19 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(
-                                0xFFF59E0B,
-                              ).withValues(alpha: 0.15),
+                              color: AppColors.accentAmber.withValues(
+                                alpha: 0.15,
+                              ),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: const Color(
-                                  0xFFF59E0B,
-                                ).withValues(alpha: 0.4),
+                                color: AppColors.accentAmber.withValues(
+                                  alpha: 0.4,
+                                ),
                               ),
                             ),
                             child: const Icon(
                               Icons.emoji_events,
-                              color: Color(0xFFFCD34D),
+                              color: AppColors.accentAmber,
                               size: 30,
                             ),
                           ),
@@ -1160,7 +684,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                       Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const _Kivilcim(),
+                          const TurnuvaKivilcim(),
                           const SizedBox(height: 14),
                           const Text(
                             "TURNUVA DEVAM EDİYOR",
@@ -1176,7 +700,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                             "Masada kıyasıya rekabet tüm hızıyla sürüyor.",
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Color(0xFF94A3B8),
+                              color: AppColors.textSecondary,
                               fontSize: 14,
                               height: 1.4,
                             ),
@@ -1198,43 +722,42 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _heroAksiyonButonu(
+                            turnuvaHeroAksiyonButonu(
                               icon: Icons.flag,
-                              renk: const Color(0xFF4ADE80),
+                              renk: AppColors.accentGreen,
                               etiket: "Sonlandır",
                               onTap: () async =>
                                   _turnuvayiSonlandir(tekTurnuva),
                             ),
-                            _heroAksiyonButonu(
+                            turnuvaHeroAksiyonButonu(
                               icon: Icons.edit,
-                              renk: const Color(0xFFE2E8F0),
+                              renk: AppColors.textPrimary,
                               etiket: "Düzenle",
-                              onTap: () =>
-                                  _turnuvaFormuGoster(turnuva: tekTurnuva),
+                              onTap: () => turnuvaFormuDiyalog(
+                                context,
+                                turnuva: tekTurnuva,
+                              ),
                             ),
-                            _heroAksiyonButonu(
+                            turnuvaHeroAksiyonButonu(
                               icon: Icons.delete,
                               renk: Colors.amber.shade700,
                               etiket: "Sil",
                               onTap: () async {
+                                if (!mounted) return;
                                 final onay = await showDialog<bool>(
                                   context: context,
                                   builder: (d) => AlertDialog(
-                                    backgroundColor: const Color(0xFF111A2B),
+                                    backgroundColor: AppColors.cardBg,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(18),
                                     ),
                                     title: const Text(
                                       'Emin misiniz?',
-                                      style: TextStyle(
-                                        color: Color(0xFFF8FAFC),
-                                      ),
+                                      style: AppTextStyles.bodyPrimary,
                                     ),
                                     content: const Text(
                                       'Aktif turnuvayı kalıcı olarak silmek istediğinize emin misiniz?',
-                                      style: TextStyle(
-                                        color: Color(0xFF94A3B8),
-                                      ),
+                                      style: AppTextStyles.bodySecondary,
                                     ),
                                     actions: [
                                       TextButton(
@@ -1242,9 +765,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                             Navigator.pop(d, false),
                                         child: const Text(
                                           'İptal',
-                                          style: TextStyle(
-                                            color: Color(0xFF94A3B8),
-                                          ),
+                                          style: AppTextStyles.bodySecondary,
                                         ),
                                       ),
                                       TextButton(
@@ -1252,7 +773,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                                         child: const Text(
                                           'Sil',
                                           style: TextStyle(
-                                            color: Color(0xFFFCD34D),
+                                            color: AppColors.accentAmber,
                                           ),
                                         ),
                                       ),
@@ -1279,71 +800,137 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
   }
 
   @override
-  void dispose() {
-    _tarihController.dispose();
-    _kazananController.dispose();
-    _ikinciController.dispose();
-    _ucuncuController.dispose();
-    _kaybedenController.dispose();
-    super.dispose();
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// KIVILCIM — hero'nun ortasında nabız atan turuncu çekirdek (KORUNDU)
-// ─────────────────────────────────────────────────────────────
-class _Kivilcim extends StatefulWidget {
-  const _Kivilcim();
-  @override
-  State<_Kivilcim> createState() => _KivilcimState();
-}
-
-class _KivilcimState extends State<_Kivilcim>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, _) {
-        final t = _c.value;
-        return Container(
-          width: 64 + 12 * t,
-          height: 64 + 12 * t,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.orangeAccent.withValues(alpha: 0.18 + 0.12 * t),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.orangeAccent.withValues(alpha: 0.5 * t),
-                blurRadius: 24 + 10 * t,
-                spreadRadius: 2,
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.bgPrimary,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.accentAmber),
+        ),
+      );
+    }
+
+    final gosterilecekListe = _tumTurnuvalar
+        .where(
+          (t) => _gosterArsiv ? t.turKazanan != null : t.turKazanan == null,
+        )
+        .toList();
+
+    return Scaffold(
+      backgroundColor: AppColors.bgPrimary,
+      appBar: AppBar(
+        title: Text(
+          _gosterArsiv ? 'Eski Turnuvalar' : 'Aktif Turnuvalar',
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+          ),
+        ),
+        backgroundColor: AppColors.bgSecondary,
+        foregroundColor: AppColors.textPrimary,
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: gosterilecekListe.isEmpty
+                ? turnuvaBosDurum(_gosterArsiv)
+                : _gosterArsiv
+                ? _arsivListeGorunumu(gosterilecekListe)
+                : _aktifHeroGorunumu(gosterilecekListe.first),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 16.0,
+              right: 90.0,
+              top: 12.0,
+              bottom: 80.0,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() => _gosterArsiv = !_gosterArsiv),
+                icon: Icon(
+                  _gosterArsiv ? Icons.play_circle_outline : Icons.history,
+                  color: AppColors.textPrimary,
+                ),
+                label: Text(
+                  _gosterArsiv ? "Aktif Turnuvalara Dön" : "Eski Turnuvalar",
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: const BorderSide(color: AppColors.divider, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
-          child: Icon(
-            Icons.local_fire_department,
-            color: Colors.orangeAccent,
-            size: 40 + 6 * t,
-          ),
-        );
-      },
+        ],
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 80.0),
+        child: FloatingActionButton(
+          onPressed: () async {
+            final currentContext = context;
+            if (_gosterArsiv) {
+              ScaffoldMessenger.of(currentContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Arşivdeki turnuvalar salt okunurdur; yeni turnuva eklenemez.",
+                  ),
+                  backgroundColor: Colors.blueGrey,
+                ),
+              );
+              return;
+            }
+            final aktifSezon = await SezonServisi().aktifSezonBul();
+            if (!mounted) return;
+            if (aktifSezon == null) {
+              if (!currentContext.mounted) return;
+              ScaffoldMessenger.of(currentContext).showSnackBar(
+                const SnackBar(
+                  content: Text("⚠️ Önce aktif bir SEZON başlatmalısınız!"),
+                  backgroundColor: Colors.orangeAccent,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              return;
+            }
+            final buGruptaAktifTurnuvaVar = _tumTurnuvalar.any(
+              (t) => t.turKazanan == null,
+            );
+            if (!currentContext.mounted) return;
+            if (buGruptaAktifTurnuvaVar && mounted) {
+              ScaffoldMessenger.of(currentContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Bu grupta zaten devam eden aktif bir turnuva bulunuyor!",
+                  ),
+                  backgroundColor: Colors.orangeAccent,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              return;
+            }
+            if (!currentContext.mounted) return;
+            turnuvaFormuDiyalog(currentContext);
+          },
+          backgroundColor: AppColors.accentAmber,
+          child: const Icon(Icons.add, color: Color(0xFF1A1206)),
+        ),
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _turnuvaStreamSub?.cancel();
+    super.dispose();
   }
 }
