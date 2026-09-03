@@ -8,6 +8,7 @@ import 'package:yaz_boz/pages/eller/eller_sayfasi.dart';
 import 'package:yaz_boz/models/oyun_model.dart';
 import 'package:yaz_boz/pages/oyunlar/oyun_widgets.dart';
 import 'package:yaz_boz/theme/app_theme.dart';
+import 'package:yaz_boz/models/turnuva_model.dart';
 
 class OyunlarSayfasi extends StatefulWidget {
   const OyunlarSayfasi({super.key});
@@ -18,7 +19,6 @@ class OyunlarSayfasi extends StatefulWidget {
 
 class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
   List<Oyun> _tumOyunlar = [];
-  List<TurBilgisi> _turnuvalar = [];
   bool _gosterArsiv = false;
   bool _isLoading = true;
 
@@ -26,12 +26,14 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
   void initState() {
     super.initState();
     _verileriDinle();
-    _yardimciVerileriYukle();
   }
 
   void _verileriDinle() {
+    // Oyunlar stream'i
     OyunServisi().tumOyunlarStreami().listen((yeniOyunlar) {
       if (!mounted) return;
+
+      // ✅ GÜNCELLENDİ: aktifMi değişikliği de setState'i tetikler
       if (yeniOyunlar.length != _tumOyunlar.length ||
           !_listelerEsitMi(yeniOyunlar, _tumOyunlar)) {
         setState(() {
@@ -44,59 +46,40 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
     });
   }
 
+  // ✅ AKTİF Mİ ALANI KARŞILAŞTIRMAYA DAHİL EDİLDİ
   bool _listelerEsitMi(List<Oyun> a, List<Oyun> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
       if (a[i].id != b[i].id ||
           a[i].oyunKazanan != b[i].oyunKazanan ||
-          a[i].oyunTarih != b[i].oyunTarih) {
+          a[i].oyunTarih != b[i].oyunTarih ||
+          a[i].aktifMi != b[i].aktifMi) {
+        // ✅ YENİ
         return false;
       }
     }
     return true;
   }
 
-  Future<void> _yardimciVerileriYukle() async {
-    try {
-      final aktifTurnuva = await TurnuvaServisi().aktifTurnuvaBul();
-      if (!mounted) return;
-      setState(() {
-        _turnuvalar = aktifTurnuva != null
-            ? [
-                TurBilgisi(
-                  id: aktifTurnuva.id,
-                  turTarih: aktifTurnuva.turTarih ?? '',
-                  turKazanan: aktifTurnuva.turKazanan,
-                ),
-              ]
-            : [];
-      });
-    } catch (e) {
-      debugPrint("❌ Yardımcı veri hatası: $e");
-    }
-  }
-
-  // ✅ UID DESTEKLİ OYUN SONLANDIRMA METODU
+  // ✅ OYUN SONLANDIRMA
   Future<void> _oyunuSonlandir(Oyun oyun) async {
-    try {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const Center(
-          child: CircularProgressIndicator(color: AppColors.accentAmber),
-        ),
-      );
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.accentAmber),
+      ),
+    );
 
+    try {
       final ellerSnap = await OyunServisi().oyunElleriniGetir(oyun.id);
       final puan = <String, int>{};
 
-      // Oyuncu isimlerini başlat
       for (final o in oyun.oyuncu.split(', ')) {
         if (o.trim().isNotEmpty) puan[o.trim()] = 0;
       }
 
-      // Puanları topla
       for (final d in ellerSnap.docs) {
         final data = d.data() as Map<String, dynamic>;
         final skorlar = data['skorlar'];
@@ -105,7 +88,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
 
         if (skorlar is Map) {
           skorlar.forEach((k, v) {
-            final o = k.toString();
+            final o = k.toString().trim();
             final s = (v is num)
                 ? v.toInt()
                 : (int.tryParse(v.toString()) ?? 0);
@@ -118,39 +101,60 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
               g = gtek.toInt();
             }
 
-            puan[o] = (puan[o] ?? 0) + s + g;
+            String hedefOyuncu = o;
+            if (oyun.oyuncuIds != null && oyun.oyuncuIds!.isNotEmpty) {
+              final uidMap = <String, String>{};
+              final oyuncuIsimleri = oyun.oyuncu
+                  .split(', ')
+                  .map((e) => e.trim())
+                  .where((e) => e.isNotEmpty)
+                  .toList();
+              for (
+                var i = 0;
+                i < oyuncuIsimleri.length && i < oyun.oyuncuIds!.length;
+                i++
+              ) {
+                uidMap[oyuncuIsimleri[i]] = oyun.oyuncuIds![i];
+              }
+              final eslesenIsim = uidMap.entries
+                  .firstWhere(
+                    (e) => e.value == o,
+                    orElse: () => MapEntry('', ''),
+                  )
+                  .key;
+              if (eslesenIsim.isNotEmpty) hedefOyuncu = eslesenIsim;
+            }
+
+            if (puan.containsKey(hedefOyuncu)) {
+              puan[hedefOyuncu] = (puan[hedefOyuncu] ?? 0) + s + g;
+            }
           });
         }
       }
 
       if (!mounted) return;
-      Navigator.pop(context); // Loading'i kapat
+      Navigator.pop(context);
 
       if (puan.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Bu oyunda henüz kayıtlı el yok — sonlandırılamaz.'),
+            content: Text('Bu oyunda henüz kayıtlı el yok.'),
             backgroundColor: Colors.orangeAccent,
           ),
         );
         return;
       }
 
-      // Sıralama yap
-      final high = oyun
-          .yuksekSkorKazanir; // Eski kodda esliMi kullanılmıştı ama yuksekSkorKazanir olmalı
+      final high = oyun.yuksekSkorKazanir;
       final sirali = puan.entries.toList()
         ..sort(
           high
-              ? (a, b) =>
-                    b.value.compareTo(a.value) // Yüksek kazanır
-              : (a, b) => a.value.compareTo(b.value), // Düşük kazanır
+              ? (a, b) => b.value.compareTo(a.value)
+              : (a, b) => a.value.compareTo(b.value),
         );
-
       final kazanan = sirali.first.key;
       final kaybeden = sirali.last.key;
 
-      // Onay Dialogu
       final onay = await showDialog<bool>(
         context: context,
         builder: (d) => AlertDialog(
@@ -185,7 +189,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                   final renk = isK
                       ? AppColors.accentGreen
                       : (isS ? AppColors.accentRed : AppColors.textPrimary);
-
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 3),
                     child: Row(
@@ -251,19 +254,22 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
 
-      // ✅ UID EŞLEŞTİRME VE GÖNDERME
       String? kazananUid;
       String? kaybedenUid;
-
       if (oyun.oyuncuIds != null && oyun.oyuncuIds!.isNotEmpty) {
         final uidMap = <String, String>{};
-        final isimler = oyun.oyuncu.split(',').map((e) => e.trim()).toList();
-
-        // İsimleri UID'lerle eşleştir
-        for (var i = 0; i < isimler.length && i < oyun.oyuncuIds!.length; i++) {
-          uidMap[isimler[i]] = oyun.oyuncuIds![i];
+        final oyuncuIsimleri = oyun.oyuncu
+            .split(', ')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        for (
+          var i = 0;
+          i < oyuncuIsimleri.length && i < oyun.oyuncuIds!.length;
+          i++
+        ) {
+          uidMap[oyuncuIsimleri[i]] = oyun.oyuncuIds![i];
         }
-
         kazananUid = uidMap[kazanan];
         kaybedenUid = uidMap[kaybeden];
       }
@@ -274,8 +280,8 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
         kaybeden,
         sirali.length > 1 ? sirali[1].key : null,
         sirali.length > 2 ? sirali[2].key : null,
-        kazananUid, // ✅ KAZANAN UID
-        kaybedenUid, // ✅ KAYBEDEN UID
+        kazananUid,
+        kaybedenUid,
       );
 
       if (!mounted) return;
@@ -301,18 +307,16 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
   }
 
   Future<void> _oyunuSil(Oyun oyun) async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.accentAmber),
+      ),
+    );
     try {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const Center(
-          child: CircularProgressIndicator(color: AppColors.accentAmber),
-        ),
-      );
-
       await OyunServisi().oyunuSil(oyun.id);
-
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -346,9 +350,9 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: () => Navigator.push(
-                context,
+                itemContext,
                 MaterialPageRoute(
-                  builder: (context) => EllerSayfasi(
+                  builder: (_) => EllerSayfasi(
                     oyunId: oyun.id,
                     isHighestWins: oyun.yuksekSkorKazanir,
                   ),
@@ -382,8 +386,9 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                             children: [
                               Row(
                                 children: [
+                                  // ✅ DÜZELTME: n parametresi isimli olarak gönderildi
                                   oyunNumaraRozeti(
-                                    oyun.numara,
+                                    n: oyun.numara,
                                     renk: AppColors.textSecondary,
                                   ),
                                   const SizedBox(width: 10),
@@ -444,7 +449,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                               Row(
                                 children: [
                                   const Text(
-                                    '🏆 ',
+                                    ' ',
                                     style: TextStyle(fontSize: 13),
                                   ),
                                   Expanded(
@@ -488,21 +493,21 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
                             onTap: () async {
-                              if (!context.mounted) return;
-                              String paylasimMetni =
-                                  "✍️ YAZ BOZ MAÇ SONUCU \n📅 Tarih: ${oyun.oyunTarih}\n👥 Oyuncular: ${oyun.oyuncu}\n-----------------------------------\n🏆 KAZANAN LİDER: ${oyun.oyunKazanan}\n📉 CEZA GÜZELİ: ${oyun.oyunKaybeden}\n\nGüzel maçtı, elinize sağlık! ";
-                              final Uri whatsappUrl = Uri.parse(
-                                "whatsapp://send?text=${Uri.encodeComponent(paylasimMetni)}",
+                              if (!itemContext.mounted) return;
+                              String metin =
+                                  "️ YAZ BOZ MAÇ SONUCU \n📅 Tarih: ${oyun.oyunTarih}\n Oyuncular: ${oyun.oyuncu}\n-----------------------------------\n KAZANAN: ${oyun.oyunKazanan}\n KAYBEDEN: ${oyun.oyunKaybeden}\n\nGüzel maçtı! ";
+                              final uri = Uri.parse(
+                                "whatsapp://send?text=${Uri.encodeComponent(metin)}",
                               );
-                              if (await canLaunchUrl(whatsappUrl)) {
+                              if (await canLaunchUrl(uri)) {
                                 await launchUrl(
-                                  whatsappUrl,
+                                  uri,
                                   mode: LaunchMode.externalApplication,
                                 );
                               } else {
                                 await launchUrl(
                                   Uri.parse(
-                                    "https://wa.me/?text=${Uri.encodeComponent(paylasimMetni)}",
+                                    "https://wa.me/?text=${Uri.encodeComponent(metin)}",
                                   ),
                                   mode: LaunchMode.externalApplication,
                                 );
@@ -546,7 +551,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                 style: AppTextStyles.bodyPrimary,
                               ),
                               content: const Text(
-                                'Bu oyunu sildiğinizde oyuna ait girilmiş TÜM eller de silinecektir. Onaylıyor musunuz?',
+                                'Bu oyunu ve tüm ellerini silmek istediğine emin misin?',
                                 style: AppTextStyles.bodySecondary,
                               ),
                               actions: [
@@ -584,21 +589,21 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
   }
 
   Widget _aktifHeroGorunumu(Oyun oyun) {
-    final double ekranYuksekligi = MediaQuery.of(context).size.height;
+    final double h = MediaQuery.of(context).size.height;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
       child: GestureDetector(
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => EllerSayfasi(
+            builder: (_) => EllerSayfasi(
               oyunId: oyun.id,
               isHighestWins: oyun.yuksekSkorKazanir,
             ),
           ),
         ),
         child: Container(
-          height: ekranYuksekligi * 0.55,
+          height: h * 0.55,
           width: double.infinity,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
@@ -631,8 +636,9 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // ✅ DÜZELTME: n parametresi isimli olarak gönderildi
                           oyunNumaraRozeti(
-                            oyun.numara,
+                            n: oyun.numara,
                             renk: AppColors.accentAmber,
                             font: 15,
                           ),
@@ -721,15 +727,15 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                         etiket: "Paylaş",
                         onTap: () async {
                           if (!context.mounted) return;
-                          String paylasimMetni =
-                              "✍️ YAZ BOZ MAÇI DEVAM EDİYOR \n📅 Tarih: ${oyun.oyunTarih}\n Masadakiler: ${oyun.oyuncu}\n🎮 Format: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu\n-----------------------------------\nMaç henüz sonlanmadı, defterde heyecan dorukta! ";
-                          final Uri whatsappUrl = Uri.parse(
-                            "https://wa.me/?text=${Uri.encodeComponent(paylasimMetni)}",
+                          String metin =
+                              "️ YAZ BOZ MAÇI DEVAM EDİYOR \n📅 Tarih: ${oyun.oyunTarih}\n Masadakiler: ${oyun.oyuncu}\n Format: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu\n-----------------------------------\nMaç devam ediyor! ";
+                          final uri = Uri.parse(
+                            "https://wa.me/?text=${Uri.encodeComponent(metin)}",
                           );
                           try {
-                            if (await canLaunchUrl(whatsappUrl)) {
+                            if (await canLaunchUrl(uri)) {
                               await launchUrl(
-                                whatsappUrl,
+                                uri,
                                 mode: LaunchMode.externalApplication,
                               );
                             }
@@ -737,9 +743,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text(
-                                    "WhatsApp açılırken bir sorun oluştu: $e",
-                                  ),
+                                  content: Text("Hata: $e"),
                                   backgroundColor: Colors.orange.shade800,
                                 ),
                               );
@@ -756,11 +760,26 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                           final guncelOyuncular = await OyunServisi()
                               .tumOyunculariGetir();
                           if (!mounted) return;
+
+                          final aktifTurnuva = await TurnuvaServisi()
+                              .aktifTurnuvaBul();
+
+                          final turnuvaList = aktifTurnuva != null
+                              ? [
+                                  TurBilgisi(
+                                    id: aktifTurnuva.id,
+                                    turTarih: aktifTurnuva.turTarih ?? '',
+                                    turKazanan: aktifTurnuva.turKazanan,
+                                  ),
+                                ]
+                              : <TurBilgisi>[];
+                          if (!mounted) return;
+
                           oyunFormuDiyalog(
                             context,
                             oyun: oyun,
                             guncelOyuncuListesi: guncelOyuncular,
-                            turnuvalar: _turnuvalar,
+                            turnuvalar: turnuvaList,
                           );
                         },
                       ),
@@ -775,6 +794,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                         renk: Colors.amber.shade700,
                         etiket: "Sil",
                         onTap: () async {
+                          if (!mounted) return;
                           bool? onay = await showDialog<bool>(
                             context: context,
                             builder: (d) => AlertDialog(
@@ -787,7 +807,7 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                                 style: AppTextStyles.bodyPrimary,
                               ),
                               content: const Text(
-                                'Bu oyunu sildiğinizde girilmiş TÜM skor tablosu yok olacaktır. Onaylıyor musunuz?',
+                                'Bu oyunu ve tüm verilerini silmek istediğine emin misin?',
                                 style: AppTextStyles.bodySecondary,
                               ),
                               actions: [
@@ -835,149 +855,225 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
       );
     }
 
+    // ✅ GÜNCELLENDİ: Filtreleme artık hem oyunKazanan hem de aktifMi'ye bakıyor
     final oyunlarListesi = _tumOyunlar
         .where(
-          (o) => _gosterArsiv ? o.oyunKazanan != null : o.oyunKazanan == null,
+          (o) => _gosterArsiv
+              ? !o.aktifMi || o.oyunKazanan != null
+              : o.aktifMi && o.oyunKazanan == null,
         )
         .toList();
 
-    return Scaffold(
-      backgroundColor: AppColors.bgPrimary,
-      appBar: AppBar(
-        title: Text(
-          _gosterArsiv ? 'Sonuçlanan Oyunlar' : 'Aktif Oyunlar',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-          ),
-        ),
-        backgroundColor: AppColors.bgSecondary,
-        foregroundColor: AppColors.textPrimary,
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: (() {
-              final aktifOyun = _tumOyunlar
-                  .where((o) => o.oyunKazanan == null)
-                  .toList();
-              if (!_gosterArsiv && aktifOyun.isNotEmpty) {
-                return _aktifHeroGorunumu(aktifOyun.first);
-              }
-              if (oyunlarListesi.isEmpty) {
-                return Center(
-                  child: Text(
-                    _gosterArsiv
-                        ? 'Arşivde hiç oyun bulunmuyor.'
-                        : 'Aktif (devam eden) oyun bulunmuyor.',
-                    style: const TextStyle(color: AppColors.textSecondary),
-                  ),
-                );
-              }
-              return _gosterArsiv
-                  ? _arsivListeGorunumu(oyunlarListesi)
-                  : _aktifHeroGorunumu(oyunlarListesi.first);
-            })(),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(
-              left: 16.0,
-              right: 90.0,
-              top: 12.0,
-              bottom: 80.0,
+    // ✅ DEĞİŞİKLİK: Aktif turnuva kontrolü artık StreamBuilder ile yapılıyor
+    return StreamBuilder<Turnuva?>(
+      stream: TurnuvaServisi().aktifTurnuvaStreami(),
+      builder: (context, snapshot) {
+        final bool aktifTurnuvaVar = snapshot.hasData && snapshot.data != null;
+
+        return Scaffold(
+          backgroundColor: AppColors.bgPrimary,
+          appBar: AppBar(
+            title: Text(
+              _gosterArsiv ? 'Sonuçlanan Oyunlar' : 'Aktif Oyunlar',
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
             ),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => setState(() => _gosterArsiv = !_gosterArsiv),
-                icon: Icon(
-                  _gosterArsiv ? Icons.play_circle_outline : Icons.history,
-                  color: AppColors.textPrimary,
+            backgroundColor: AppColors.bgSecondary,
+            foregroundColor: AppColors.textPrimary,
+          ),
+          body: Column(
+            children: [
+              Expanded(
+                child: (() {
+                  // ✅ GÜNCELLENDİ: Hero görünümü için de aktifMi kontrolü eklendi
+                  final aktifOyun = _tumOyunlar
+                      .where((o) => o.aktifMi && o.oyunKazanan == null)
+                      .toList();
+
+                  // ✅ ARŞİV MODUNDA DEĞİLSE VE AKTİF TURNUVA YOKSA ÖZEL UYARI
+                  if (!_gosterArsiv && !aktifTurnuvaVar) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.block_outlined,
+                              size: 64,
+                              color: AppColors.textSecondary.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            const Text(
+                              "Aktif turnuva olmadan oyun açılamaz.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              "Lütfen önce yeni bir turnuva başlatın.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  if (!_gosterArsiv && aktifOyun.isNotEmpty) {
+                    return _aktifHeroGorunumu(aktifOyun.first);
+                  }
+                  if (oyunlarListesi.isEmpty) {
+                    return Center(
+                      child: Text(
+                        _gosterArsiv
+                            ? 'Arşivde hiç oyun bulunmuyor.'
+                            : 'Aktif oyun bulunmuyor.',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                    );
+                  }
+                  return _gosterArsiv
+                      ? _arsivListeGorunumu(oyunlarListesi)
+                      : _aktifHeroGorunumu(oyunlarListesi.first);
+                })(),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: 16.0,
+                  right: 90.0,
+                  top: 12.0,
+                  bottom: 80.0,
                 ),
-                label: Text(
-                  _gosterArsiv ? "Aktif Oyunlara Dön" : "Eski Oyunlar",
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: AppColors.divider, width: 1.5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        setState(() => _gosterArsiv = !_gosterArsiv),
+                    icon: Icon(
+                      _gosterArsiv ? Icons.play_circle_outline : Icons.history,
+                      color: AppColors.textPrimary,
+                    ),
+                    label: Text(
+                      _gosterArsiv ? "Aktif Oyunlara Dön" : "Eski Oyunlar",
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(
+                        color: AppColors.divider,
+                        width: 1.5,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
                   ),
                 ),
               ),
+            ],
+          ),
+
+          // ✅ BUTON KONTROLÜ: Stream'den gelen veriye göre anlık güncellenir
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 80.0),
+            child: FloatingActionButton(
+              onPressed: !aktifTurnuvaVar
+                  ? null
+                  : () async {
+                      if (!mounted) return;
+                      final safeCtx = context;
+
+                      // Çift güvenlik kontrolü
+                      final aktifTurnuva = snapshot.data;
+                      if (aktifTurnuva == null) {
+                        ScaffoldMessenger.of(safeCtx).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "⚠️ Önce aktif bir TURNUVA oluşturmalısınız!",
+                            ),
+                            backgroundColor: Colors.orangeAccent,
+                          ),
+                        );
+                        return;
+                      }
+
+                      final aktifSezon = await SezonServisi().aktifSezonBul();
+                      if (aktifSezon == null) {
+                        if (!safeCtx.mounted) return;
+                        ScaffoldMessenger.of(safeCtx).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "️ Önce aktif bir SEZON başlatmalısınız!",
+                            ),
+                            backgroundColor: Colors.orangeAccent,
+                          ),
+                        );
+                        return;
+                      }
+
+                      // ✅ GÜNCELLENDİ: Sadece aktif oyunları say
+                      final buGruptaAktifOyunVar = _tumOyunlar.any(
+                        (o) => o.aktifMi && o.oyunKazanan == null,
+                      );
+                      if (buGruptaAktifOyunVar && safeCtx.mounted) {
+                        ScaffoldMessenger.of(safeCtx).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Zaten devam eden aktif bir oyun var!",
+                            ),
+                            backgroundColor: Colors.orangeAccent,
+                          ),
+                        );
+                        return;
+                      }
+
+                      if (!safeCtx.mounted) return;
+                      final guncelOyuncular = await OyunServisi()
+                          .tumOyunculariGetir();
+                      if (!safeCtx.mounted) return;
+
+                      final turnuvaList = [
+                        TurBilgisi(
+                          id: aktifTurnuva.id,
+                          turTarih: aktifTurnuva.turTarih ?? '',
+                          turKazanan: aktifTurnuva.turKazanan,
+                        ),
+                      ];
+                      oyunFormuDiyalog(
+                        safeCtx,
+                        guncelOyuncuListesi: guncelOyuncular,
+                        turnuvalar: turnuvaList,
+                      );
+                    },
+              backgroundColor: !aktifTurnuvaVar
+                  ? AppColors.divider
+                  : AppColors.accentAmber,
+              child: Icon(
+                Icons.add,
+                color: !aktifTurnuvaVar
+                    ? AppColors.textHint
+                    : const Color(0xFF1A1206),
+              ),
             ),
           ),
-        ],
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 80.0),
-        child: FloatingActionButton(
-          onPressed: () async {
-            final currentContext = context;
-            if (!currentContext.mounted) return;
-            final messenger = ScaffoldMessenger.of(currentContext);
-
-            final aktifSezon = await SezonServisi().aktifSezonBul();
-            if (aktifSezon == null) {
-              messenger.showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "⚠️ Manuel oyun eklemek için önce aktif bir SEZON başlatmalısınız!",
-                  ),
-                  backgroundColor: Colors.orangeAccent,
-                  duration: Duration(seconds: 4),
-                ),
-              );
-              return;
-            }
-
-            if (_turnuvalar.isEmpty) {
-              messenger.showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "Oyun başlatabilmek için önce aktif bir TURNUVA oluşturmalısınız!",
-                  ),
-                  backgroundColor: Colors.orangeAccent,
-                  duration: Duration(seconds: 4),
-                ),
-              );
-              return;
-            }
-
-            final buGruptaAktifOyunVar = _tumOyunlar.any(
-              (o) => o.oyunKazanan == null,
-            );
-            if (buGruptaAktifOyunVar && currentContext.mounted) {
-              messenger.showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "Bu grupta zaten devam eden aktif bir oyun bulunuyor!",
-                  ),
-                  backgroundColor: Colors.orangeAccent,
-                  duration: Duration(seconds: 4),
-                ),
-              );
-              return;
-            }
-
-            if (!currentContext.mounted) return;
-            final guncelOyuncular = await OyunServisi().tumOyunculariGetir();
-            if (!currentContext.mounted) return;
-
-            oyunFormuDiyalog(
-              currentContext,
-              guncelOyuncuListesi: guncelOyuncular,
-              turnuvalar: _turnuvalar,
-            );
-          },
-          backgroundColor: AppColors.accentAmber,
-          child: const Icon(Icons.add, color: Color(0xFF1A1206)),
-        ),
-      ),
+        );
+      },
     );
   }
 

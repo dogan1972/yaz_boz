@@ -15,7 +15,7 @@ import 'package:yaz_boz/pages/arkadas/arkadas_sayfasi.dart';
 import 'package:yaz_boz/pages/profil/profil_sayfasi.dart';
 import 'package:yaz_boz/pages/cagri/cagri_panosu_wrapper.dart';
 import 'package:yaz_boz/widgets/app_widgets.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
 void main() async {
   ErrorWidget.builder = (FlutterErrorDetails details) => AppHataKarti(

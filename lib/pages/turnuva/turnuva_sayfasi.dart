@@ -8,7 +8,7 @@ import 'package:yaz_boz/services/auth_service.dart';
 import 'package:yaz_boz/pages/turnuva/turnuva_detay_sayfasi.dart';
 import 'package:yaz_boz/models/turnuva_model.dart';
 import 'package:yaz_boz/pages/turnuva/turnuva_widgets.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
 class TurnuvaSayfasi extends StatefulWidget {
   const TurnuvaSayfasi({super.key});
@@ -35,6 +35,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       yeniListe,
     ) {
       if (!mounted) return;
+      // ✅ AKTİF Mİ ALANI DA EŞİTLİK KONTROLÜNE EKLENDİ
       if (yeniListe.length != _tumTurnuvalar.length ||
           !_listelerEsitMi(yeniListe, _tumTurnuvalar)) {
         setState(() {
@@ -47,6 +48,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
     });
   }
 
+  // ✅ AKTİF Mİ ALANI KARŞILAŞTIRMAYA DAHİL EDİLDİ
   bool _listelerEsitMi(List<Turnuva> a, List<Turnuva> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
@@ -54,7 +56,9 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
           a[i].numara != b[i].numara ||
           a[i].turTarih != b[i].turTarih ||
           a[i].turKazanan != b[i].turKazanan ||
-          a[i].tursonuc != b[i].tursonuc) {
+          a[i].tursonuc != b[i].tursonuc ||
+          a[i].aktifMi != b[i].aktifMi) {
+        // ✅ YENİ
         return false;
       }
     }
@@ -159,7 +163,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
         if (bosOnay != true || !mounted) return;
       }
 
-      // ✅ 2. ADIM: Şampiyon ve Sonuncu Hesaplama (DOĞRU MANTIK)
+      // ✅ 2. ADIM: Şampiyon ve Sonuncu Hesaplama
       String sampiyon = '';
       String? sonuncu;
 
@@ -184,14 +188,12 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
         }
 
         // 2. GEÇİŞ: Galibiyetleri say
-        // KURAL: Bir oyunda kaybeden dışındaki HERKES +1 galibiyet alır.
         for (var doc in oyunlarSnap.docs) {
           final data = doc.data();
           final kaybeden = data['oyunKaybeden'];
 
           if (kaybeden != null && kaybeden.toString().isNotEmpty) {
             final kAdi = kaybeden.toString();
-            // Kaybeden hariç tüm oyunculara galibiyet ekle
             for (var oyuncu in oyuncular) {
               if (oyuncu != kAdi) {
                 galibiyetler[oyuncu] = (galibiyetler[oyuncu] ?? 0) + 1;
@@ -202,18 +204,14 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
 
         // ✅ ŞAMPİYON: En çok galibiyeti alan
         var sirali = galibiyetler.entries.toList();
-        sirali.sort((a, b) => b.value.compareTo(a.value)); // AZALAN SIRALAMA
-
-        // Eğer birden fazla kişi aynı en yüksek galibiyete sahipse,
-        // ilk sırada olanı şampiyon alıyoruz (veya tie-breaker eklenebilir)
+        sirali.sort((a, b) => b.value.compareTo(a.value));
         sampiyon = sirali.isNotEmpty ? sirali.first.key : '';
 
-        // ✅ SONUNCU: En az galibiyeti alan (En çok kaybeden)
+        // ✅ SONUNCU: En az galibiyeti alan
         var sonSirali = galibiyetler.entries.toList()
-          ..sort((a, b) => a.value.compareTo(b.value)); // ARTAN SIRALAMA
+          ..sort((a, b) => a.value.compareTo(b.value));
         sonuncu = sonSirali.isNotEmpty ? sonSirali.first.key : null;
 
-        // Eğer şampiyon ve sonuncu aynı kişi çıkarsa (tek oyuncu vb.), sonuncuyu null yap
         if (sampiyon == sonuncu) sonuncu = null;
       } else {
         sampiyon = '-';
@@ -222,11 +220,9 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       if (!mounted) return;
 
       // ✅ 3. ADIM: Onay Dialogu
-      // ✅ 3. ADIM: Onay Dialogu (KLAVYE DÜZELTMESİ)
       final onay = await showDialog<bool>(
         context: context,
         builder: (d) => StatefulBuilder(
-          // ✅ StatefulBuilder eklendi
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: AppColors.cardBg,
@@ -239,7 +235,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                     : 'Turnuvayı Sonlandır',
               ),
               content: SingleChildScrollView(
-                // ✅ Scroll eklendi
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,7 +264,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                     ],
                     const SizedBox(height: 12),
                     TextField(
-                      autofocus: true, // ✅ İmleç otomatik odaklanır
+                      autofocus: true,
                       controller: TextEditingController(text: sampiyon),
                       style: const TextStyle(color: AppColors.textPrimary),
                       decoration: const InputDecoration(
@@ -281,9 +276,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
                           vertical: 16,
                         ),
                       ),
-                      onChanged: (val) => setDialogState(
-                        () => sampiyon = val,
-                      ), // ✅ Anlık güncelleme
+                      onChanged: (val) => setDialogState(() => sampiyon = val),
                     ),
                   ],
                 ),
@@ -810,9 +803,12 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       );
     }
 
+    // ✅ FİLTRELEME MANTIĞI AKTİF Mİ ALANINA GÖRE GÜNCELLENDİ
     final gosterilecekListe = _tumTurnuvalar
         .where(
-          (t) => _gosterArsiv ? t.turKazanan != null : t.turKazanan == null,
+          (t) => _gosterArsiv
+              ? !t.aktifMi || t.turKazanan != null
+              : t.aktifMi && t.turKazanan == null,
         )
         .toList();
 
@@ -902,8 +898,9 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
               );
               return;
             }
+            // ✅ AKTİF TURNUVA KONTROLÜ AKTİF Mİ ALANINA GÖRE YAPILIYOR
             final buGruptaAktifTurnuvaVar = _tumTurnuvalar.any(
-              (t) => t.turKazanan == null,
+              (t) => t.aktifMi && t.turKazanan == null,
             );
             if (!currentContext.mounted) return;
             if (buGruptaAktifTurnuvaVar && mounted) {

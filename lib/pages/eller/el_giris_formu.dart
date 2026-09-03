@@ -4,7 +4,7 @@ import 'package:yaz_boz/services/el_servisi.dart';
 import 'package:yaz_boz/models/oyun_model.dart';
 import 'package:yaz_boz/models/el_giris_model.dart';
 import 'package:yaz_boz/pages/eller/el_giris_widgets.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
 class ElGirisFormu extends StatefulWidget {
   final String oyunId;
@@ -18,6 +18,9 @@ class ElGirisFormu extends StatefulWidget {
   final Map<String, int>? duzenlemeGostergeler;
   final String? duzenlemeElId;
 
+  // ✅ YENİ: İsim -> UID eşleştirmesi için map
+  final Map<String, String>? oyuncuUidMap;
+
   const ElGirisFormu({
     super.key,
     required this.oyunId,
@@ -30,6 +33,7 @@ class ElGirisFormu extends StatefulWidget {
     this.duzenlemeGosterge,
     this.duzenlemeGostergeler,
     this.duzenlemeElId,
+    this.oyuncuUidMap, // ✅ YENİ PARAMETRE
   });
 
   bool get duzenlemeModu => duzenlemeElId != null && duzenlemeSkorlar != null;
@@ -60,18 +64,38 @@ class _ElGirisFormuState extends State<ElGirisFormu> {
     if (widget.duzenlemeModu) {
       _tarih.text = widget.duzenlemeTarih ?? '';
       final s = widget.duzenlemeSkorlar!;
+
+      // Düzenleme modunda skorları yüklerken hem UID hem İsim kontrolü yap
       for (var i = 0; i < _oyuncuVerileri.length; i++) {
-        final net = s[widget.aktifOyuncular[i]] ?? 0;
+        final oyuncuAdi = widget.aktifOyuncular[i];
+        // Önce UID ile dene, yoksa isimle dene
+        String? uid = widget.oyuncuUidMap?[oyuncuAdi];
+        int net = 0;
+        if (uid != null && s.containsKey(uid)) {
+          net = s[uid] ?? 0;
+        } else if (s.containsKey(oyuncuAdi)) {
+          net = s[oyuncuAdi] ?? 0;
+        }
+
         if (net < 0) {
           _oyuncuVerileri[i].karController.text = (-net).toString();
         } else {
           _oyuncuVerileri[i].zararController.text = net.toString();
         }
       }
+
       final gm = widget.duzenlemeGostergeler ?? const {};
       for (var i = 0; i < _oyuncuVerileri.length; i++) {
-        final o = widget.aktifOyuncular[i];
-        final g = gm[o] ?? widget.duzenlemeGosterge ?? 0;
+        final oyuncuAdi = widget.aktifOyuncular[i];
+        String? uid = widget.oyuncuUidMap?[oyuncuAdi];
+        int g = 0;
+        if (uid != null && gm.containsKey(uid)) {
+          g = gm[uid] ?? 0;
+        } else if (gm.containsKey(oyuncuAdi)) {
+          g = gm[oyuncuAdi] ?? widget.duzenlemeGosterge ?? 0;
+        } else {
+          g = widget.duzenlemeGosterge ?? 0;
+        }
         _oyuncuVerileri[i].gostergeController.text = (-g).toString();
       }
     } else {
@@ -113,9 +137,13 @@ class _ElGirisFormuState extends State<ElGirisFormu> {
       final gostergeMap = <String, int>{};
 
       for (final v in _oyuncuVerileri) {
-        skorlar[v.ad] = v.netSkor;
+        // ✅ KRİTİK DÜZELTME: Skorları kaydederken İSİM yerine UID kullan
+        // Eğer uidMap varsa ve bu oyuncu için UID bulunuyorsa onu kullan, yoksa ismi kullan (fallback)
+        final String anahtar = widget.oyuncuUidMap?[v.ad] ?? v.ad;
+
+        skorlar[anahtar] = v.netSkor;
         final g = v.gostergeDegeri;
-        if (g != 0) gostergeMap[v.ad] = g;
+        if (g != 0) gostergeMap[anahtar] = g;
       }
 
       final svc = ElServisi();
@@ -235,7 +263,6 @@ class _ElGirisFormuState extends State<ElGirisFormu> {
           const Divider(color: AppColors.divider),
         ],
 
-        // ✅ YENİ: OYUNCU KUTULARI BÖLÜMÜ
         if (_oyuncuVerileri.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -255,7 +282,6 @@ class _ElGirisFormuState extends State<ElGirisFormu> {
                     ),
                   )
                 : Column(
-                    // ✅ DİKEY MODDA COLUMN İLE SAR
                     children: List.generate(
                       _oyuncuVerileri.length,
                       (i) => oyuncuKutu(_oyuncuVerileri[i]),

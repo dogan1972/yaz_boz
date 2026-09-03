@@ -7,9 +7,10 @@ class Sezon {
   final String sezonTarih;
   final String? sezonSampiyon;
   final bool isLowestWins;
-
-  // ✅ YENİ: Grup kimliği (Gizlilik ve güvenlik için)
   final String? grupId;
+
+  // ✅ YENİ: Aktif/Pasif durumu
+  final bool aktifMi;
 
   const Sezon({
     required this.id,
@@ -18,6 +19,7 @@ class Sezon {
     this.sezonSampiyon,
     this.isLowestWins = true,
     this.grupId,
+    this.aktifMi = true, // Varsayılan olarak aktif
   });
 
   factory Sezon.fromFirestore(DocumentSnapshot doc) {
@@ -28,7 +30,9 @@ class Sezon {
       sezonTarih: data['sezonTarih']?.toString() ?? '',
       sezonSampiyon: data['sezonSampiyon']?.toString(),
       isLowestWins: data['isLowestWins'] ?? true,
-      grupId: data['grupId']?.toString(), // ✅ OKU
+      grupId: data['grupId']?.toString(),
+      // ✅ Firestore'dan oku, yoksa varsayılan true
+      aktifMi: data['aktifMi'] ?? true,
     );
   }
 
@@ -37,7 +41,8 @@ class Sezon {
     'sezonTarih': sezonTarih,
     'sezonSampiyon': sezonSampiyon,
     'isLowestWins': isLowestWins,
-    'grupId': grupId, // ✅ KAYDET
+    'grupId': grupId,
+    'aktifMi': aktifMi, // ✅ Kaydet
   };
 }
 

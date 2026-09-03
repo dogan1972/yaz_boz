@@ -371,7 +371,7 @@ class _SalonIcerikState extends State<SalonIcerik>
                 Positioned(
                   left: pusulaPozisyonlari[i].dx - 42,
                   top: pusulaPozisyonlari[i].dy - 32,
-                  width: 120, // Butonun sığması için genişlik artırıldı
+                  width: 120,
                   child: SalonSandalye(
                     uid: koltuklar[i],
                     ad: _ad(koltuklar[i]),
@@ -457,10 +457,9 @@ class _SalonIcerikState extends State<SalonIcerik>
                       ],
                     ),
                   ),
-                  if (!acan &&
-                      !onayli &&
-                      benim &&
-                      (c.yer != null && c.yer!.isNotEmpty))
+                  // ✅ DÜZELTME: Mühürlü çağrıda da onay butonu aktif
+                  // c.yer kontrolü kaldırıldı — mühürlü olsa bile onaylanabilsin
+                  if (!acan && !onayli && benim)
                     Material(
                       color: AppColors.accentCyan,
                       borderRadius: BorderRadius.circular(8),
@@ -583,7 +582,7 @@ class _SalonIcerikState extends State<SalonIcerik>
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.accentRed,
                         ),
-                        child: const Text('Evet, Kapat'),
+                        child: const Text('Evet, Çağrıyı İptal Et'),
                       ),
                     ],
                   ),

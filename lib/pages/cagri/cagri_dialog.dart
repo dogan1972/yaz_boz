@@ -15,7 +15,6 @@ Future<void> cagriAcDialogu(
 }) async {
   final profil = await AuthService().profilGarantile();
 
-  // ✅ HATA DÜZELTMESİ 1: Async işlem sonrası context güvenliği
   if (!context.mounted) return;
 
   if (profil == null || profil.arkadasIds.isEmpty) {
@@ -54,33 +53,23 @@ Future<void> cagriAcDialogu(
   String? secilenSaat = mevcutCagri?.saat;
   String? secilenTarih = mevcutCagri?.tarih;
 
-  // Birleştirilmiş Yer/Konum başlangıç değeri
-  String birlesikYer = '';
-  if (mevcutCagri != null) {
-    final parts = <String>[];
-    if (mevcutCagri.yer != null && mevcutCagri.yer!.isNotEmpty) {
-      parts.add(mevcutCagri.yer!);
-    }
-    if (mevcutCagri.konumAd != null && mevcutCagri.konumAd!.isNotEmpty) {
-      parts.add(mevcutCagri.konumAd!);
-    }
-    birlesikYer = parts.join(', ');
-  }
-  String secilenYer = birlesikYer;
+  // ✅ AYRI ALANLAR: Yer (Mekan Adı) ve Konum (Link/Arama)
+  String secilenYer = mevcutCagri?.yer ?? '';
+  String secilenKonum = mevcutCagri?.konumAd ?? '';
 
   // GRUP BAZLI SEÇİM
   final seciliArkadaslar = <String>{};
 
-  // ✅ HATA DÜZELTMESİ 2: Gereksiz null kontrolleri kaldırıldı
-  // Blocun içinde olduğumuz için mevcutCagri ve davetliIds güvenli kabul edilir
   if (mevcutCagri != null) {
     seciliArkadaslar.addAll(mevcutCagri.davetliIds);
   } else if (profil.grupId != null) {
     // Yeni çağrı için grup mantığı
   }
 
-  // Controller dialog öncesinde tanımlandı
+  // Controller'lar ayrı ayrı tanımlandı
   final yerController = TextEditingController(text: secilenYer);
+  final konumController = TextEditingController(text: secilenKonum);
+
   if (!context.mounted) return;
 
   await showDialog(
@@ -233,18 +222,17 @@ Future<void> cagriAcDialogu(
                   ),
                   const SizedBox(height: 16),
 
-                  // BİRLEŞTİRİLMİŞ YER / MEKAN ALANI
+                  // ✅ 1. ALAN: YER / MEKAN (Sadece Metin)
                   const Text('YER / MEKAN', style: AppTextStyles.caption),
                   const SizedBox(height: 6),
                   TextField(
                     controller: yerController,
-                    maxLines: 2,
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 14,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Örn: Delta Cafe, Saat Kulesi yanı',
+                      hintText: 'Örn: Delta Kafe',
                       hintStyle: const TextStyle(color: Color(0xFF475569)),
                       filled: true,
                       fillColor: AppColors.inputBg,
@@ -258,6 +246,48 @@ Future<void> cagriAcDialogu(
                       ),
                     ),
                     onChanged: (val) => secilenYer = val,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ✅ 2. ALAN: KONUM LİNKİ / ARAMA
+                  const Text(
+                    'KONUM LİNKİ / ARAMA',
+                    style: AppTextStyles.caption,
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: konumController,
+                    maxLines: 2,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Google Maps linki yapıştırın veya adres yazın',
+                      hintStyle: const TextStyle(color: Color(0xFF475569)),
+                      filled: true,
+                      fillColor: AppColors.inputBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      suffixIcon: IconButton(
+                        icon: const Icon(
+                          Icons.map_outlined,
+                          color: AppColors.accentBlue,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          // İsteğe bağlı: Haritayı direkt açma butonu
+                        },
+                      ),
+                    ),
+                    onChanged: (val) => secilenKonum = val,
                   ),
                   const SizedBox(height: 20),
 
@@ -349,6 +379,8 @@ Future<void> cagriAcDialogu(
                         'saat': secilenSaat,
                         'tarih': secilenTarih,
                         'yer': secilenYer.trim(),
+                        'konumAd': secilenKonum
+                            .trim(), // ✅ KONUM AYRI GÖNDERİLİYOR
                         'davetliler': seciliArkadaslar.toList(),
                       };
                       Navigator.pop(dialogContext, data);
@@ -372,7 +404,7 @@ Future<void> cagriAcDialogu(
         saat: data['saat'] as String?,
         tarih: data['tarih'] as String?,
         yer: data['yer'] as String,
-        konumAd: null,
+        konumAd: data['konumAd'] as String?, // ✅ KONUM GÜNCELLENİYOR
         davetliIds: List<String>.from(data['davetliler']),
       );
       if (context.mounted) {
@@ -390,7 +422,7 @@ Future<void> cagriAcDialogu(
         davetliIds: List<String>.from(data['davetliler']),
         saat: data['saat'] as String?,
         yer: data['yer'] as String,
-        konumAd: null,
+        konumAd: data['konumAd'] as String?, // ✅ KONUM KAYDEDİLİYOR
         tarih: data['tarih'] as String?,
       );
     }

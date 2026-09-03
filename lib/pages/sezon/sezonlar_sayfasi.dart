@@ -5,7 +5,7 @@ import 'package:yaz_boz/services/sezon_servisi.dart';
 import 'package:yaz_boz/pages/sezon/sezon_detay_sayfasi.dart';
 import 'package:yaz_boz/models/sezon_model.dart';
 import 'package:yaz_boz/pages/sezon/sezon_widgets.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
 class SezonlarSayfasi extends StatefulWidget {
   const SezonlarSayfasi({super.key});
@@ -30,6 +30,7 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     _sezonStreamSub = SezonServisi().tumSezonlarStreami().listen((yeniListe) {
       if (!mounted) return;
 
+      // ✅ AKTİF Mİ ALANI DA EŞİTLİK KONTROLÜNE EKLENDİ
       if (yeniListe.length != _tumSezonlar.length ||
           !_listelerEsitMi(yeniListe, _tumSezonlar)) {
         setState(() {
@@ -42,13 +43,16 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     });
   }
 
+  // ✅ AKTİF Mİ KARŞILAŞTIRMAYA DAHİL EDİLDİ
   bool _listelerEsitMi(List<Sezon> a, List<Sezon> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
       if (a[i].id != b[i].id ||
           a[i].numara != b[i].numara ||
           a[i].sezonTarih != b[i].sezonTarih ||
-          a[i].sezonSampiyon != b[i].sezonSampiyon) {
+          a[i].sezonSampiyon != b[i].sezonSampiyon ||
+          a[i].aktifMi != b[i].aktifMi) {
+        // ✅ YENİ
         return false;
       }
     }
@@ -91,7 +95,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
     try {
       if (!mounted) return;
 
-      // ✅ 1. ADIM: Boş mu kontrol et ve uyarı göster
       final stats = await SezonServisi().sezonIstatistikHesapla(tekSezon.id);
       if (!mounted) return;
 
@@ -140,7 +143,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
         if (bosOnay != true || !mounted) return;
       }
 
-      // ✅ 2. ADIM: Şampiyon belirleme dialogu (Boşsa manuel giriş zorunlu)
       String sampiyonAd = '';
       if (toplamOyun > 0) {
         final oyuncuListesiRaw = stats['oyuncuIstatistikleri'];
@@ -160,7 +162,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
           sampiyonAd = enIyiOyuncu;
         }
       } else {
-        // Boş sezon için varsayılan değer
         sampiyonAd = '-';
       }
 
@@ -212,12 +213,13 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
 
       if (manuel == null || manuel.isEmpty || !mounted) return;
 
-      // ✅ 3. ADIM: İşlemi tamamla
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
+
+      // ✅ ZİNCİRLEME PASİFE ALMA SERVİS METODU ÇAĞRILIYOR
       await SezonServisi().sezonuSonlandir(tekSezon.id, manuel);
 
       if (!mounted) return;
@@ -297,8 +299,9 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                             children: [
                               Row(
                                 children: [
+                                  // ✅ DÜZELTME: n parametresi isimli olarak gönderildi
                                   sezonNumaraRozeti(
-                                    tekSezon.numara,
+                                    n: tekSezon.numara,
                                     renk: AppColors.textSecondary,
                                   ),
                                   const SizedBox(width: 10),
@@ -435,7 +438,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
   }
 
   Widget _aktifHeroGorunumu(Sezon tekSezon) {
-    final double h = MediaQuery.of(context).size.height;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
       child: Material(
@@ -453,7 +455,9 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
             ),
           ),
           child: Container(
-            height: h * 0.55,
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height * 0.45,
+            ),
             width: double.infinity,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
@@ -481,13 +485,15 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // ✅ DÜZELTME: n parametresi isimli olarak gönderildi
                             sezonNumaraRozeti(
-                              tekSezon.numara,
+                              n: tekSezon.numara,
                               renk: AppColors.accentAmber,
                               font: 15,
                             ),
@@ -496,8 +502,9 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                               tekSezon.sezonTarih,
                               style: const TextStyle(
                                 color: AppColors.textPrimary,
-                                fontSize: 26,
+                                fontSize: 24,
                                 fontWeight: FontWeight.bold,
+                                height: 1.2,
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -525,31 +532,39 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                       ),
                     ],
                   ),
-                  const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.bolt, color: AppColors.accentAmber, size: 54),
-                      SizedBox(height: 8),
-                      Text(
-                        "SEZON DEVAM EDİYOR",
-                        style: TextStyle(
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.bolt,
                           color: AppColors.accentAmber,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          letterSpacing: 1.5,
+                          size: 48,
                         ),
-                      ),
-                      SizedBox(height: 6),
-                      Text(
-                        "Masada rekabet tüm hızıyla sürüyor.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 13,
-                          height: 1.4,
+                        const SizedBox(height: 8),
+                        const Text(
+                          "SEZON DEVAM EDİYOR",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.accentAmber,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            letterSpacing: 1.5,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        const Text(
+                          "Masada rekabet tüm hızıyla sürüyor.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -646,10 +661,12 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
       );
     }
 
+    // ✅ FİLTRELEME MANTIĞI AKTİF Mİ ALANINA GÖRE GÜNCELLENDİ
     final liste = _tumSezonlar
         .where(
-          (s) =>
-              _gosterArsiv ? s.sezonSampiyon != null : s.sezonSampiyon == null,
+          (s) => _gosterArsiv
+              ? !s.aktifMi || s.sezonSampiyon != null
+              : s.aktifMi && s.sezonSampiyon == null,
         )
         .toList();
 
@@ -712,9 +729,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 80.0),
         child: FloatingActionButton(
-          // lib/pages/sezon/sezonlar_sayfasi.dart - FloatingActionButton onPressed
-
-          // lib/pages/sezon/sezonlar_sayfasi.dart - FloatingActionButton onPressed
           onPressed: _yukleniyor
               ? null
               : () async {
@@ -723,14 +737,14 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                   setState(() => _yukleniyor = true);
 
                   try {
+                    // ✅ AKTİF TURNUVA KONTROLÜ AKTİF Mİ ALANINA GÖRE YAPILIYOR
                     final buGruptaAktifVar = _tumSezonlar.any(
-                      (s) => s.sezonSampiyon == null,
+                      (s) => s.aktifMi && s.sezonSampiyon == null,
                     );
 
                     if (!mounted) return;
 
                     if (buGruptaAktifVar) {
-                      // ✅ safeContext kullanılıyor (Async gap yok)
                       ScaffoldMessenger.of(safeContext).showSnackBar(
                         const SnackBar(
                           content: Text(
@@ -757,7 +771,6 @@ class _SezonlarSayfasiState extends State<SezonlarSayfasi> {
                       );
                     }
                   } finally {
-                    // ✅ 5. ADIM: LOADING'I KAPAT
                     if (mounted) setState(() => _yukleniyor = false);
                   }
                 },

@@ -31,7 +31,7 @@ class TurnuvaServisi {
         });
   }
 
-  // 🔒 AKTİF TURNUVA BULMA
+  //  AKTİF TURNUVA BULMA
   Future<Turnuva?> aktifTurnuvaBul() async {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) return null;
@@ -47,7 +47,7 @@ class TurnuvaServisi {
     return Turnuva.fromFirestore(snap.docs.first);
   }
 
-  // ✅ YENİ TURNUVA OLUŞTURMA (GRUP İÇİ NUMARATÖR + BOŞ KONTROL HAZIRLIĞI)
+  // ✅ YENİ TURNUVA OLUŞTURMA
   Future<String> yeniTurnuvaOlustur({
     required String sezonId,
     required String turTarih,
@@ -56,18 +56,16 @@ class TurnuvaServisi {
     final k = await AuthService().profilGarantile();
     if (k == null) throw Exception('Kullanıcı profili bulunamadı.');
 
-    // ✅ GRUP İÇİ NUMARATÖR: Her grup kendi sayacından başlar
     final numaraRef = _fs
-        .collection('gruplar')
-        .doc(k.grupId!)
-        .collection('numarator')
-        .doc('turnuva');
+        .collection('metadata')
+        .doc('turnuva_numarasi_${k.grupId}');
     int yeniNumara = 1;
 
     await _fs.runTransaction((tx) async {
       final doc = await tx.get(numaraRef);
       if (doc.exists) {
-        yeniNumara = (doc.data()?['son_numara'] ?? 0) + 1;
+        final current = (doc.data()?['son_numara'] ?? 0) as int;
+        yeniNumara = current + 1;
         tx.update(numaraRef, {'son_numara': yeniNumara});
       } else {
         tx.set(numaraRef, {'son_numara': 1});
@@ -87,11 +85,12 @@ class TurnuvaServisi {
       'isLowestWins': isLowestWins,
       'grupId': k.grupId,
       'olusturma': FieldValue.serverTimestamp(),
+      'aktifMi': true,
     });
     return ref.id;
   }
 
-  // ✅ TURNUVA SONLANDIRMA (BOŞ TURNUVA UYARISI İÇİN VERİ DÖNDÜRÜR)
+  // ✅ TURNUVA SONLANDIRMA HAZIRLIK
   Future<Map<String, dynamic>> turnuvayiSonlandirHazirla(
     String turnuvaId,
   ) async {
@@ -102,7 +101,6 @@ class TurnuvaServisi {
       throw Exception('Bu turnuvayı sonlandırma yetkiniz yok.');
     }
 
-    // Oyun sayısını kontrol et
     final oyunSnap = await _fs
         .collection('oyunlar')
         .where('turId', isEqualTo: turnuvaId)
@@ -112,6 +110,7 @@ class TurnuvaServisi {
     return {'toplamOyun': oyunSnap.docs.length, 'turnuvaData': doc.data()};
   }
 
+  // ✅✅ GÜNCELLENDİ: EN ÇOK KAZANANA GÖRE ŞAMPİYON BELİRLEME ✅✅
   Future<void> turnuvayiSonlandir(
     String turnuvaId,
     String sampiyonAd,
@@ -124,12 +123,202 @@ class TurnuvaServisi {
       throw Exception('Bu turnuvayı sonlandırma yetkiniz yok.');
     }
 
-    await _fs.collection('turnuva').doc(turnuvaId).update({
-      'turKazanan': sampiyonAd,
-      'turKaybeden': sonuncuAd,
+    final grupId = k!.grupId!;
+    final batch = _fs.batch();
+
+    // 1. ADIM: Bu turnuvaya ait AÇIK oyunları bul ve varsa sonlandır
+    final acikOyunlarSnap = await _fs
+        .collection('oyunlar')
+        .where('turId', isEqualTo: turnuvaId)
+        .where('grupId', isEqualTo: grupId)
+        .where('oyunKazanan', isEqualTo: null)
+        .get();
+
+    for (var oDoc in acikOyunlarSnap.docs) {
+      final oyunData = oDoc.data();
+      final oyunId = oDoc.id;
+
+      // ⚠️ KRİTİK KOŞUL: En az 1 el girilmiş mi?
+      final ellerSnap = await _fs
+          .collection('eller')
+          .where('oyunId', isEqualTo: oyunId)
+          .where('grupId', isEqualTo: grupId)
+          .limit(1)
+          .get();
+
+      if (ellerSnap.docs.isNotEmpty) {
+        // ✅ EL VARSA: Oyunu normal şekilde sonlandır
+        final tumEller = await _fs
+            .collection('eller')
+            .where('oyunId', isEqualTo: oyunId)
+            .where('grupId', isEqualTo: grupId)
+            .get();
+
+        List<String> oyuncuIsimleri =
+            (oyunData['oyuncu'] as String?)
+                ?.split(', ')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            [];
+
+        List<String>? oyuncuUidListesi = (oyunData['oyuncuIds'] as List?)
+            ?.map((e) => e.toString())
+            .toList();
+
+        Map<String, String> uidToNameMap = {};
+        if (oyuncuUidListesi != null &&
+            oyuncuUidListesi.length == oyuncuIsimleri.length) {
+          for (int i = 0; i < oyuncuUidListesi.length; i++) {
+            uidToNameMap[oyuncuUidListesi[i]] = oyuncuIsimleri[i];
+          }
+        }
+
+        Map<String, int> puanlar = {};
+        for (var isim in oyuncuIsimleri) {
+          puanlar[isim] = 0;
+        }
+
+        bool isLowestWins =
+            oyunData['yuksekSkorKazanir'] == false ||
+            oyunData['yuksekSkorKazanir'] == 0;
+
+        for (var elDoc in tumEller.docs) {
+          final elData = elDoc.data();
+          final skorlar = elData['skorlar'] as Map?;
+          final gostergeler = elData['gostergeler'] as Map?;
+          final tekGosterge = elData['gosterge'];
+
+          if (skorlar is Map) {
+            skorlar.forEach((uidKey, skorVal) {
+              final uidStr = uidKey.toString();
+              final s = (skorVal is num)
+                  ? skorVal.toInt()
+                  : (int.tryParse(skorVal.toString()) ?? 0);
+
+              int g = 0;
+              if (gostergeler is Map && gostergeler[uidKey] != null) {
+                final gv = gostergeler[uidKey];
+                g = (gv is num)
+                    ? gv.toInt()
+                    : (int.tryParse(gv.toString()) ?? 0);
+              } else if (tekGosterge is num) {
+                g = tekGosterge.toInt();
+              }
+
+              String hedefIsim = uidToNameMap[uidStr] ?? uidStr;
+              if (puanlar.containsKey(hedefIsim)) {
+                puanlar[hedefIsim] = (puanlar[hedefIsim] ?? 0) + s + g;
+              }
+            });
+          }
+        }
+
+        var sirali = puanlar.entries.toList();
+        sirali.sort(
+          (a, b) => isLowestWins
+              ? a.value.compareTo(b.value)
+              : b.value.compareTo(a.value),
+        );
+
+        String kazanan = sirali.isNotEmpty ? sirali.first.key : '';
+        String kaybeden = sirali.length > 1 ? sirali.last.key : '';
+
+        String? kazananUid = uidToNameMap.entries
+            .firstWhere(
+              (e) => e.value == kazanan,
+              orElse: () => MapEntry('', ''),
+            )
+            .key;
+        String? kaybedenUid = uidToNameMap.entries
+            .firstWhere(
+              (e) => e.value == kaybeden,
+              orElse: () => MapEntry('', ''),
+            )
+            .key;
+
+        batch.update(oDoc.reference, {
+          'oyunKazanan': kazanan,
+          'oyunKaybeden': kaybeden,
+          'oyunKazananUid': kazananUid,
+          'oyunKaybedenUid': kaybedenUid,
+          'bitisTarihi': FieldValue.serverTimestamp(),
+          'aktifMi': false,
+        });
+      } else {
+        // ❌ EL YOKSA: Sadece pasife al
+        batch.update(oDoc.reference, {
+          'aktifMi': false,
+          'bitisTarihi': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    // 2. ADIM: Tüm oyunları (bitmiş olanlar dahil) tarayıp şampiyonu belirle
+    final tumOyunlarSnap = await _fs
+        .collection('oyunlar')
+        .where('turId', isEqualTo: turnuvaId)
+        .where('grupId', isEqualTo: grupId)
+        .get();
+
+    Map<String, int> kazanmaSayisi = {};
+    Map<String, String> uidToNameMapGlobal = {};
+
+    for (var oDoc in tumOyunlarSnap.docs) {
+      final data = oDoc.data();
+      final kazananUid = data['oyunKazananUid']?.toString();
+
+      if (kazananUid != null && kazananUid.isNotEmpty) {
+        kazanmaSayisi[kazananUid] = (kazanmaSayisi[kazananUid] ?? 0) + 1;
+
+        // İsim haritasını güncelle (oyuncu listesinde olabilir)
+        final oyuncuListesi = data['oyuncu'] as String?;
+        final uidListesi = (data['oyuncuIds'] as List?)
+            ?.map((e) => e.toString())
+            .toList();
+
+        if (oyuncuListesi != null && uidListesi != null) {
+          final isimler = oyuncuListesi
+              .split(', ')
+              .map((e) => e.trim())
+              .toList();
+          for (int i = 0; i < uidListesi.length && i < isimler.length; i++) {
+            if (uidListesi[i] == kazananUid) {
+              uidToNameMapGlobal[kazananUid] = isimler[i];
+            }
+          }
+        }
+      }
+    }
+
+    // En çok kazananı bul
+    String enCokKazananUid = '';
+    int maxKazanma = 0;
+
+    kazanmaSayisi.forEach((uid, adet) {
+      // ✅ 'count' yerine 'adet' kullanıldı
+      if (adet > maxKazanma) {
+        maxKazanma = adet;
+        enCokKazananUid = uid;
+      }
+    });
+
+    // Eğer hiç oyun kazanılmadıysa veya veri yoksa parametredeki ismi kullan
+    String finalSampiyon = uidToNameMapGlobal[enCokKazananUid] ?? sampiyonAd;
+
+    // Kaybedeni belirlemek için (en az kazanan veya parametre)
+    String finalKaybeden = sonuncuAd ?? '-';
+
+    // 3. ADIM: Turnuvayı Güncelle
+    batch.update(_fs.collection('turnuva').doc(turnuvaId), {
+      'turKazanan': finalSampiyon,
+      'turKaybeden': finalKaybeden,
       'tursonuc': 1,
       'bitisTarihi': FieldValue.serverTimestamp(),
+      'aktifMi': false,
     });
+
+    await batch.commit();
   }
 
   // ✅ ZİNCİRLEME SİLME
@@ -173,7 +362,7 @@ class TurnuvaServisi {
     await _fs.collection('turnuva').doc(id).update(data);
   }
 
-  // ✅ TURNUVA DETAY HESAPLAMA (BOŞ TURNUVA GÜVENLİĞİ EKLENDİ)
+  // ✅ TURNUVA DETAY HESAPLAMA
   Future<Map<String, dynamic>> turnuvaDetayHesapla(String turnuvaId) async {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) {
@@ -203,7 +392,6 @@ class TurnuvaServisi {
         .where((d) => (d.data())['oyunKaybeden'] != null)
         .length;
 
-    // ✅ BOŞ TURNUVA İSTATİSTİK GÜVENLİĞİ
     if (turnuvaOyunlari.isEmpty) {
       return {
         'turData': turData,
@@ -221,5 +409,26 @@ class TurnuvaServisi {
       'bitenOyun': biten,
       'toplamOyun': turnuvaOyunlari.length,
     };
+  }
+
+  // 🔒 AKTİF TURNUVA STREAMİ
+  Stream<Turnuva?> aktifTurnuvaStreami() async* {
+    final k = await AuthService().profilGarantile();
+    if (k == null || k.grupId == null) {
+      yield null;
+      return;
+    }
+
+    yield* _fs
+        .collection('turnuva')
+        .where('grupId', isEqualTo: k.grupId)
+        .where('turKazanan', isEqualTo: null)
+        .where('aktifMi', isEqualTo: true)
+        .limit(1)
+        .snapshots()
+        .map(
+          (snap) =>
+              snap.docs.isEmpty ? null : Turnuva.fromFirestore(snap.docs.first),
+        );
   }
 }

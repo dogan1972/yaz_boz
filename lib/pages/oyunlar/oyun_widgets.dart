@@ -5,8 +5,8 @@ import 'package:yaz_boz/services/oyun_servisi.dart';
 import 'package:yaz_boz/theme/app_theme.dart';
 
 /// Numara Rozeti
-Widget oyunNumaraRozeti(
-  int? n, {
+Widget oyunNumaraRozeti({
+  int? n,
   Color renk = AppColors.accentBlue,
   double? font,
 }) {
@@ -101,7 +101,7 @@ Widget oyunHeroAksiyonButonu({
 }
 
 Future<void> oyunFormuDiyalog(
-  BuildContext context, {
+  BuildContext pageContext, {
   Oyun? oyun,
   required List<Oyuncu> guncelOyuncuListesi,
   required List<TurBilgisi> turnuvalar,
@@ -116,31 +116,64 @@ Future<void> oyunFormuDiyalog(
   bool isEsli = oyun?.esliMi ?? false;
   bool isYuksekKazanir = oyun?.yuksekSkorKazanir ?? false;
 
-  String? selectedTurId =
-      oyun?.turId ?? (turnuvalar.isNotEmpty ? turnuvalar.first.id : null);
+  // ✅ SADECE AKTİF TURNUVALARI FİLTRELE
+  // Düzenleme modunda bile pasif turnuvaların seçilmesini engeller
+  final aktifTurnuvalar = turnuvalar
+      .where((t) => t.turKazanan == null)
+      .toList();
 
-  // ✅ OYUNCU SEÇİMİNİ İSİM DEĞİL, UID ÜZERİNDEN YAPACAĞIZ
-  // masaSirasi artık sadece isim tutacak (görsel için),
-  // seciliUidler ise veritabanına gidecek asıl liste olacak.
+  String? selectedTurId =
+      oyun?.turId ??
+      (aktifTurnuvalar.isNotEmpty ? aktifTurnuvalar.first.id : null);
+
+  // ✅ EĞER OYUN DÜZENLENİYORSA AMA TURNUVA PASİFE ALINMIŞSA UYAR
+  if (oyun != null && selectedTurId != null) {
+    final seciliTurnuva = turnuvalar.firstWhere(
+      (t) => t.id == selectedTurId,
+      orElse: () => TurBilgisi(id: '', turTarih: ''),
+    );
+
+    // Eğer seçili turnuva listede yoksa veya kazananı varsa (pasifse)
+    if (seciliTurnuva.id.isEmpty || seciliTurnuva.turKazanan != null) {
+      // Kullanıcıyı bilgilendir ve seçimi sıfırla
+      selectedTurId = aktifTurnuvalar.isNotEmpty
+          ? aktifTurnuvalar.first.id
+          : null;
+
+      // Dialog açılmadan önce uyarı göstermek için Future kullanıyoruz
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (pageContext.mounted) {
+          ScaffoldMessenger.of(pageContext).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Bağlı turnuva sonlandırıldığı için yeni bir turnuva seçmeniz gerekiyor.',
+              ),
+              backgroundColor: Colors.orangeAccent,
+            ),
+          );
+        }
+      });
+    }
+  }
+
   List<String> masaSirasiIsimleri = [];
   List<String> seciliUidler = [];
 
-  if (oyun != null && oyun.oyuncu.isNotEmpty) {
-    // Eski oyunlarda sadece isim var, uid yoksa boş bırakıyoruz.
-    // Yeni sistemde oyun modelinde 'oyuncuIds' alanı olmalı.
-    // Şimdilik geriye dönük uyumluluk için isimleri parse ediyoruz.
-    masaSirasiIsimleri = oyun.oyuncu
-        .split(',')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    // Eğer oyunda uid bilgisi varsa (Oyun modeline eklenmeli) buraya yükle
-    // if (oyun.oyuncuIds != null) seciliUidler = List.from(oyun.oyuncuIds!);
+  if (oyun != null) {
+    if (oyun.oyuncuIds != null && oyun.oyuncuIds!.isNotEmpty) {
+      seciliUidler = List.from(oyun.oyuncuIds!);
+    }
+    if (oyun.oyuncu.isNotEmpty) {
+      masaSirasiIsimleri = oyun.oyuncu
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
   }
 
   await showDialog(
-    context: context,
+    context: pageContext,
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setStateDialog) => AlertDialog(
         backgroundColor: AppColors.cardBg,
@@ -159,8 +192,8 @@ Future<void> oyunFormuDiyalog(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // TURNUVA SEÇİMİ
-                if (turnuvalar.isNotEmpty)
+                // ✅ DROPDOWN SADECE AKTİF TURNUVALARI GÖSTERİR
+                if (aktifTurnuvalar.isNotEmpty)
                   DropdownButtonFormField<String>(
                     initialValue: selectedTurId,
                     decoration: InputDecoration(
@@ -177,7 +210,7 @@ Future<void> oyunFormuDiyalog(
                         borderSide: const BorderSide(color: AppColors.border),
                       ),
                     ),
-                    items: turnuvalar
+                    items: aktifTurnuvalar
                         .map(
                           (t) => DropdownMenuItem(
                             value: t.id,
@@ -260,7 +293,6 @@ Future<void> oyunFormuDiyalog(
 
                 const SizedBox(height: 16),
 
-                // ✅ OYUNCU HAVUZU - UID BAZLI SEÇİM
                 const Text(
                   'Oyuncu Havuzu (Eklemek için tıkla):',
                   style: TextStyle(
@@ -342,7 +374,6 @@ Future<void> oyunFormuDiyalog(
 
                 const SizedBox(height: 16),
 
-                // ✅ MASADAKİLER LİSTESİ
                 if (masaSirasiIsimleri.isNotEmpty) ...[
                   const Text(
                     'Masadaki Sıra:',
@@ -445,7 +476,6 @@ Future<void> oyunFormuDiyalog(
                   const SizedBox(height: 16),
                 ],
 
-                // ✅ EŞLİ OYUN TOGGLE
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -501,7 +531,6 @@ Future<void> oyunFormuDiyalog(
 
                 const SizedBox(height: 12),
 
-                // ✅ KAZANMA YÖNÜ TOGGLE
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -591,9 +620,10 @@ Future<void> oyunFormuDiyalog(
                 final svc = OyunServisi();
                 if (!dialogContext.mounted) return;
                 Navigator.pop(dialogContext);
-                if (context.mounted) {
+
+                if (pageContext.mounted) {
                   showDialog(
-                    context: context,
+                    context: pageContext,
                     barrierDismissible: false,
                     builder: (_) =>
                         const Center(child: CircularProgressIndicator()),
@@ -609,7 +639,7 @@ Future<void> oyunFormuDiyalog(
                     elSayisi: int.tryParse(elSayisiCtrl.text) ?? 8,
                     oyuncuSayisi: seciliUidler.length,
                     oyuncular: oyuncuString,
-                    oyuncuIds: seciliUidler, // ✅ UID LİSTESİ GÖNDERİLİYOR
+                    oyuncuIds: seciliUidler,
                     esliMi: isEsli,
                     yuksekSkorKazanir: isYuksekKazanir,
                   );
@@ -620,18 +650,18 @@ Future<void> oyunFormuDiyalog(
                     'elSayisi': int.tryParse(elSayisiCtrl.text) ?? 8,
                     'oyuncuSayisi': seciliUidler.length,
                     'oyuncu': oyuncuString,
-                    'oyuncuIds': seciliUidler, // ✅ UID LİSTESİ GÜNCELLENİYOR
+                    'oyuncuIds': seciliUidler,
                     'esliMi': isEsli ? 1 : 0,
                     'yuksekSkorKazanir': isYuksekKazanir ? 1 : 0,
                   });
                 }
 
-                if (!context.mounted) return;
-                Navigator.pop(context);
+                if (!pageContext.mounted) return;
+                Navigator.pop(pageContext);
               } catch (e) {
-                if (!context.mounted) return;
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                if (!pageContext.mounted) return;
+                Navigator.pop(pageContext);
+                ScaffoldMessenger.of(pageContext).showSnackBar(
                   SnackBar(
                     content: Text('Hata: $e'),
                     backgroundColor: AppColors.accentRed,

@@ -13,6 +13,9 @@ class YazbozTahtasi extends StatelessWidget {
   final bool kilitli;
   final bool isHighestWins;
 
+  // ✅ YENİ: İsim -> UID Eşleştirme Haritası
+  final Map<String, String>? oyuncuUidMap;
+
   const YazbozTahtasi({
     super.key,
     required this.oyunElleri,
@@ -21,11 +24,23 @@ class YazbozTahtasi extends StatelessWidget {
     required this.onElTap,
     this.kilitli = false,
     this.isHighestWins = false,
+    this.oyuncuUidMap, // ✅ YENİ PARAMETRE
   });
 
   bool get _esliOyun =>
       seciliOyun?.esliMi == true && aktifOyuncular.length == 4;
-  int? _gosterge(El el, String oyuncu) => el.gostergeMap[oyuncu] ?? el.gosterge;
+
+  // ✅ YARDIMCI METOD: İsmi UID'ye Çevir
+  String _getUid(String oyuncuAdi) {
+    return oyuncuUidMap?[oyuncuAdi] ?? oyuncuAdi;
+  }
+
+  // ✅ GÜNCELLENMİŞ: Gösterge Okuma (UID Desteği)
+  int? _gosterge(El el, String oyuncuAdi) {
+    final uid = _getUid(oyuncuAdi);
+    // Önce UID ile ara, bulunamazsa isimle ara (geriye dönük uyumluluk)
+    return el.gostergeMap[uid] ?? el.gostergeMap[oyuncuAdi] ?? el.gosterge;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +78,7 @@ class YazbozTahtasi extends StatelessWidget {
     const solEtiketW = 68.0;
     final sutunSayisi = _esliOyun ? 2 : aktifOyuncular.length;
 
-    // Minimum sütun genişliği, kalan alan paylaşılır
-    final minSutunW = 56.0; // ✅ 60 → 56
+    final minSutunW = 56.0;
     final kullanilabilirW = ekranGenisligi - solEtiketW - 20;
     final dinamikSutunW = (kullanilabilirW / sutunSayisi).clamp(
       minSutunW,
@@ -97,21 +111,40 @@ class YazbozTahtasi extends StatelessWidget {
         return a.compareTo(b);
       });
 
+    // ✅ GÜNCELLENMİŞ TOPLAM HESAPLAMA: UID DESTEKLİ
     final toplam = <String, int>{for (final o in aktifOyuncular) o: 0};
     final gostergeler = <String, List<int>>{
       for (final o in aktifOyuncular) o: <int>[],
     };
 
     for (final el in sirali) {
-      el.skorlar.forEach((oyuncu, skor) {
-        final g = _gosterge(el, oyuncu) ?? 0;
-        toplam[oyuncu] = (toplam[oyuncu] ?? 0) + skor + g;
+      el.skorlar.forEach((key, skor) {
+        // Key UID veya İsim olabilir. Hangi oyuncuya ait olduğunu bul.
+        String? eslesenOyuncu;
+
+        // 1. Doğrudan isim eşleşmesi var mı?
+        if (aktifOyuncular.contains(key)) {
+          eslesenOyuncu = key;
+        }
+        // 2. UID eşleşmesi var mı?
+        else {
+          eslesenOyuncu = oyuncuUidMap?.entries
+              .firstWhere((e) => e.value == key, orElse: () => MapEntry('', ''))
+              .key;
+        }
+
+        if (eslesenOyuncu != null && eslesenOyuncu.isNotEmpty) {
+          final g = _gosterge(el, eslesenOyuncu) ?? 0;
+          toplam[eslesenOyuncu] = (toplam[eslesenOyuncu] ?? 0) + skor + g;
+
+          final gVal = _gosterge(el, eslesenOyuncu);
+          if (gVal != null && gVal != 0) {
+            gostergeler.putIfAbsent(eslesenOyuncu, () => []).add(gVal);
+          }
+        }
       });
-      for (final o in aktifOyuncular) {
-        final g = _gosterge(el, o);
-        if (g != null && g != 0) gostergeler.putIfAbsent(o, () => []).add(g);
-      }
     }
+
     final maxGosterge = gostergeler.values.fold<int>(
       1,
       (m, l) => l.length > m ? l.length : m,
@@ -126,7 +159,6 @@ class YazbozTahtasi extends StatelessWidget {
     final liderD = isHighestWins ? siraliSonuc.last : siraliSonuc.first;
     final sonuncD = isHighestWins ? siraliSonuc.first : siraliSonuc.last;
 
-    // ✅ DÜZELTME: Başlıklar çapraz eşleme ile (1-3 ve 2-4)
     final basliklar = <Widget>[];
     if (_esliOyun) {
       final takim1 = "${aktifOyuncular[0]} – ${aktifOyuncular[2]}";
@@ -139,7 +171,6 @@ class YazbozTahtasi extends StatelessWidget {
       }
     }
 
-    // ✅ YATAY SCROLL EKLENDİ
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(4, 16, 4, 0),
@@ -167,7 +198,7 @@ class YazbozTahtasi extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 96),
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              scrollDirection: Axis.horizontal, // ✅ YATAY KAYDIRMA
+              scrollDirection: Axis.horizontal,
               child: Table(
                 columnWidths: genislikler,
                 defaultVerticalAlignment: TableCellVerticalAlignment.middle,
@@ -308,27 +339,36 @@ class YazbozTahtasi extends StatelessWidget {
                     _esElSkor(i, grup).toString(),
                   )
         else
+          // ✅ GÜNCELLENMİŞ: Tekil Oyuncu Skorlarını UID ile Oku
           for (final o in aktifOyuncular)
             kilitli
                 ? ybHucre(
-                    (el.skorlar[o] ?? 0).toString(),
+                    _tekilSkor(el, o).toString(),
                     color: skorRengi,
                     weight: FontWeight.w700,
                     size: 14,
                   )
                 : ybTiklanabilirHucre(
                     () => onElTap(el),
-                    (el.skorlar[o] ?? 0).toString(),
+                    _tekilSkor(el, o).toString(),
                   ),
       ],
     );
   }
 
-  // ✅ DÜZELTME: Çapraz eşleme (1-3 ve 2-4)
+  // ✅ YENİ YARDIMCI METOD: Tekil Oyuncu Skorunu UID ile Oku
+  int _tekilSkor(El el, String oyuncuAdi) {
+    final uid = _getUid(oyuncuAdi);
+    // Önce UID ile ara, yoksa isimle ara
+    final s = el.skorlar[uid] ?? el.skorlar[oyuncuAdi] ?? 0;
+    final g = _gosterge(el, oyuncuAdi) ?? 0;
+    return s + g;
+  }
+
+  // ✅ GÜNCELLENMİŞ: Çapraz Eşleme (UID Desteği)
   int _esGosterge(int es, int row, Map<String, List<int>> g) {
     var t = 0;
     for (var j = 0; j < 2; j++) {
-      // es=0 → indeks 0,2 | es=1 → indeks 1,3
       final idx = es + j * 2;
       final l = g[aktifOyuncular[idx]] ?? const [];
       if (l.length > row) t += l[row];
@@ -336,34 +376,21 @@ class YazbozTahtasi extends StatelessWidget {
     return t;
   }
 
-  // ✅ DÜZELTME: Çapraz eşleme (1-3 ve 2-4)
+  // ✅ GÜNCELLENMİŞ: Eşli El Skoru (UID Desteği)
   int _esElSkor(int es, List<El> grup) {
     var t = 0;
     for (var j = 0; j < 2; j++) {
-      // es=0 → indeks 0,2 | es=1 → indeks 1,3
       final idx = es + j * 2;
       final o = aktifOyuncular[idx];
-      final e = grup.firstWhere(
-        (x) => x.skorlar.containsKey(o),
-        orElse: () => El(
-          id: '',
-          oyunId: '',
-          elNo: 0,
-          skorlar: {},
-          gostergeMap: {},
-          elTarih: '',
-        ),
-      );
-      t += (e.skorlar[o] ?? 0) + (e.gostergeMap[o] ?? e.gosterge ?? 0);
+      t += _tekilSkor(grup.first, o);
     }
     return t;
   }
 
-  // ✅ DÜZELTME: Çapraz eşleme (1-3 ve 2-4)
+  // ✅ GÜNCELLENMİŞ: Eşli Toplam (UID Desteği)
   int _esToplam(int es, Map<String, int> toplam) {
     var t = 0;
     for (var j = 0; j < 2; j++) {
-      // es=0 → indeks 0,2 | es=1 → indeks 1,3
       final idx = es + j * 2;
       t += toplam[aktifOyuncular[idx]] ?? 0;
     }

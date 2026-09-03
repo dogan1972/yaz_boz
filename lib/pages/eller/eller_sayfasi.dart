@@ -11,7 +11,7 @@ import 'package:yaz_boz/pages/eller/el_giris_formu.dart';
 import 'package:yaz_boz/pages/eller/elleri_bitir.dart';
 import 'package:yaz_boz/models/el_model.dart';
 import 'package:yaz_boz/pages/eller/eller_widgets.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
 class EllerSayfasi extends StatefulWidget {
   final String? oyunId;
@@ -34,6 +34,9 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
   String? _hata;
   StreamSubscription<List<El>>? _sub;
 
+  // ✅ YENİ: İsim -> UID Eşleştirme Haritası
+  Map<String, String> _oyuncuUidMap = {};
+
   String? get _oyunId => widget.oyunId ?? _cozulmusId;
   bool get _oyunsuz =>
       widget.oyunId == null && _aramaBitti && _cozulmusId == null;
@@ -53,6 +56,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
     _seciliOyun = null;
     _aktifOyuncular = [];
     _tumEller = [];
+    _oyuncuUidMap = {}; // ✅ SIFIRLA
     _sub?.cancel();
 
     if (widget.oyunId != null) {
@@ -151,7 +155,6 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
     }
 
     try {
-      // ✅ 'oyun' parametre olarak verilmediyse Firestore'dan çek
       final secilenOyun = oyun ?? await OyunServisi().oyunGetir(id);
 
       if (!mounted) return;
@@ -159,12 +162,26 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
       setState(() {
         _seciliOyun = secilenOyun;
         if (_seciliOyun != null) {
+          // İsim listesini oluştur
           _aktifOyuncular =
               (_seciliOyun!.oyuncu as String?)
                   ?.split(', ')
                   .where((o) => o.isNotEmpty)
                   .toList() ??
               [];
+
+          // ✅ KRİTİK DÜZELTME: İsim -> UID Eşleştirme Haritasını Oluştur
+          _oyuncuUidMap = {};
+          if (_seciliOyun!.oyuncuIds != null &&
+              _seciliOyun!.oyuncuIds!.isNotEmpty) {
+            for (
+              var i = 0;
+              i < _aktifOyuncular.length && i < _seciliOyun!.oyuncuIds!.length;
+              i++
+            ) {
+              _oyuncuUidMap[_aktifOyuncular[i]] = _seciliOyun!.oyuncuIds![i];
+            }
+          }
         }
         _isLoading = false;
       });
@@ -182,12 +199,30 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
   bool get _kilitli => _seciliOyun?.oyunKazanan != null;
   int get _mevcutElSayisi => _tumEller.length;
 
+  // ✅ GÜNCELLENMİŞ TOPLAM HESAPLAMA: Hem UID hem İsim anahtarlarını destekler
   Map<String, int> get _toplam {
     final m = <String, int>{for (final o in _aktifOyuncular) o: 0};
     for (final el in _tumEller) {
-      el.skorlar.forEach((o, s) {
-        final g = el.gostergeMap[o] ?? el.gosterge ?? 0;
-        m[o] = (m[o] ?? 0) + s + g;
+      el.skorlar.forEach((key, s) {
+        // Key UID olabilir veya İsim olabilir. Her ikisini de kontrol et.
+        String oyuncuAdi = key;
+
+        // Eğer key bir UID ise ve map'te ters eşleşme varsa ismi bul
+        final eslesenIsim = _oyuncuUidMap.entries
+            .firstWhere((e) => e.value == key, orElse: () => MapEntry('', ''))
+            .key;
+
+        if (eslesenIsim.isNotEmpty) {
+          oyuncuAdi = eslesenIsim;
+        } else if (_aktifOyuncular.contains(key)) {
+          // Key zaten bir isimse direkt kullan
+          oyuncuAdi = key;
+        }
+
+        final g = el.gostergeMap[key] ?? el.gosterge ?? 0;
+        if (m.containsKey(oyuncuAdi)) {
+          m[oyuncuAdi] = (m[oyuncuAdi] ?? 0) + s + g;
+        }
       });
     }
     return m;
@@ -209,6 +244,8 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
         duzenlemeSkorlar: duzenle?.skorlar,
         duzenlemeGosterge: duzenle?.gosterge,
         duzenlemeGostergeler: duzenle?.gostergeMap,
+        // ✅ KRİTİK DÜZELTME: UID Map'ini Forma Gönder
+        oyuncuUidMap: _oyuncuUidMap,
       ),
     );
   }
@@ -223,7 +260,6 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
       return;
     }
 
-    // ✅ esliMi kontrolü + 4 oyuncu kontrolü
     final esli = _seciliOyun?.esliMi == true && _aktifOyuncular.length == 4;
 
     final buf = StringBuffer('✍️ YAZ BOZ SKOR TABLOSU\n')
@@ -231,11 +267,10 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
       ..writeln('───────────────');
 
     if (esli) {
-      // ✅ DÜZELTME: 1-3 ve 2-4 eşleme (indeks 0-2 ve 1-3)
-      final takim1A = _aktifOyuncular[0]; // 1. oyuncu
-      final takim1B = _aktifOyuncular[2]; // 3. oyuncu
-      final takim2A = _aktifOyuncular[1]; // 2. oyuncu
-      final takim2B = _aktifOyuncular[3]; // 4. oyuncu
+      final takim1A = _aktifOyuncular[0];
+      final takim1B = _aktifOyuncular[2];
+      final takim2A = _aktifOyuncular[1];
+      final takim2B = _aktifOyuncular[3];
 
       final puan1 = (sonuclar[takim1A] ?? 0) + (sonuclar[takim1B] ?? 0);
       final puan2 = (sonuclar[takim2A] ?? 0) + (sonuclar[takim2B] ?? 0);
@@ -243,7 +278,6 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
       buf.writeln('🤝 $takim1A & $takim1B: $puan1');
       buf.writeln('🤝 $takim2A & $takim2B: $puan2');
     } else {
-      // Eşsiz oyun: Herkes kendi skorunu alır
       sonuclar.forEach((o, p) => buf.writeln('• $o: $p'));
     }
 
@@ -358,12 +392,15 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
             if (_kilitli) const EllerKilitSeridi(),
             if (!_kilitli && _seciliOyun != null && _aktifOyuncular.isNotEmpty)
               ellerIlerlemeCubugu(_mevcutElSayisi, _seciliOyun!.elSayisi),
+
+            // ✅ KRİTİK DÜZELTME: YazbozTahtasi'na oyuncuUidMap gönderiliyor
             YazbozTahtasi(
               oyunElleri: _tumEller,
               aktifOyuncular: _aktifOyuncular,
               seciliOyun: _seciliOyun,
               kilitli: _kilitli,
               isHighestWins: widget.isHighestWins,
+              oyuncuUidMap: _oyuncuUidMap, // ✅ BU SATIR EKLENDİ
               onElTap: (el) {
                 if (!_kilitli) _formAc(duzenle: el);
               },
@@ -376,7 +413,7 @@ class _EllerSayfasiState extends State<EllerSayfasi> {
         ),
       );
     } catch (e, st) {
-      debugPrint('❌ build hatası: $e\n$st');
+      debugPrint(' build hatası: $e\n$st');
       return ellerHataEkrani('$e', '$st', _baslat, context);
     }
   }

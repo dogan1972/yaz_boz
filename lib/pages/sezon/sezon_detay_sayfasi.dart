@@ -3,17 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:yaz_boz/services/sezon_servisi.dart';
 import 'package:yaz_boz/theme/app_theme.dart';
 
-class OyuncuDetayIstatistik {
-  final String oyuncuAdi;
-  final int oynadigiOyun, kazandigiOyun, kaybettigiOyun;
-  OyuncuDetayIstatistik({
-    required this.oyuncuAdi,
-    required this.oynadigiOyun,
-    required this.kazandigiOyun,
-    required this.kaybettigiOyun,
-  });
-}
-
 class SezonDetaySayfasi extends StatefulWidget {
   final String sezonId;
   final String sezonAdi;

@@ -10,11 +10,12 @@ class Turnuva {
   final String? turIkinci;
   final String? turUcuncu;
   final String? turKaybeden;
-  final int tursonuc;
+  final int? tursonuc; // ✅ Nullable yapıldı
   final bool isLowestWins;
-
-  // ✅ YENİ: Grup kimliği (Gizlilik ve güvenlik için)
   final String? grupId;
+
+  // ✅ YENİ: Aktif/Pasif durumu
+  final bool aktifMi;
 
   const Turnuva({
     required this.id,
@@ -25,9 +26,10 @@ class Turnuva {
     this.turIkinci,
     this.turUcuncu,
     this.turKaybeden,
-    required this.tursonuc,
+    this.tursonuc,
     this.isLowestWins = true,
     this.grupId,
+    this.aktifMi = true, // ✅ Varsayılan olarak aktif
   });
 
   factory Turnuva.fromFirestore(DocumentSnapshot doc) {
@@ -41,9 +43,11 @@ class Turnuva {
       turIkinci: data['turIkinci']?.toString(),
       turUcuncu: data['turUcuncu']?.toString(),
       turKaybeden: data['turKaybeden']?.toString(),
-      tursonuc: (data['tursonuc'] as num?)?.toInt() ?? 0,
+      tursonuc: (data['tursonuc'] as num?)?.toInt(),
       isLowestWins: data['isLowestWins'] ?? true,
-      grupId: data['grupId']?.toString(), // ✅ OKU
+      grupId: data['grupId']?.toString(),
+      // ✅ Firestore'dan oku, yoksa varsayılan true
+      aktifMi: data['aktifMi'] ?? true,
     );
   }
 
@@ -57,6 +61,7 @@ class Turnuva {
     'turKaybeden': turKaybeden,
     'tursonuc': tursonuc,
     'isLowestWins': isLowestWins,
-    'grupId': grupId, // ✅ KAYDET
+    'grupId': grupId,
+    'aktifMi': aktifMi, // ✅ Kaydet
   };
 }

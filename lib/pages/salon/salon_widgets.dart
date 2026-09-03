@@ -204,12 +204,11 @@ class SalonSandalye extends StatelessWidget {
           ),
         ),
 
-        // ✅ DÜZELTME: Buton görünme koşulu güncellendi
-        // Sadece 'yer' bilgisinin girilmesi yeterli, saat zorunlu değil.
-        // Böylece 5. ve sonraki davetliler de butonu görebilir.
+        // ✅ DÜZELTME: Mühürlü çağrıda (!cagri.kilitli) kontrolü KALDIRILDI
+        // Çağrı mühürlense bile 5. ve sonraki kişiler onaylayabilsin diye
+        // sadece 'sonlandi' durumu engelliyor.
         if (bekliyor &&
             (cagri.yer != null && cagri.yer!.isNotEmpty) &&
-            !cagri.kilitli &&
             cagri.durum != 'sonlandi' &&
             benim)
           Padding(

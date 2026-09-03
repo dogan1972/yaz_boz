@@ -27,14 +27,13 @@ class OyunServisi {
         });
   }
 
-  // ✅ OYUN OLUŞTURMA (UID LİSTESİ DESTEKLİ)
   Future<String> yeniOyunOlustur({
     required String turId,
     required String oyunTarih,
     required int elSayisi,
     required int oyuncuSayisi,
     required String oyuncular,
-    required List<String> oyuncuIds, // ✅ YENİ PARAMETRE
+    required List<String> oyuncuIds,
     required bool esliMi,
     required bool yuksekSkorKazanir,
   }) async {
@@ -43,12 +42,29 @@ class OyunServisi {
       throw Exception('Kullanıcı profili veya grup bilgisi bulunamadı.');
     }
 
-    // ✅ GRUP İÇİ NUMARATÖR
+    // ✅ GÜNCELLENDİ: AKTİF Mİ KONTROLÜ EKLENDİ
+    final turDoc = await _fs.collection('turnuva').doc(turId).get();
+    if (!turDoc.exists || turDoc.data()?['grupId'] != k.grupId) {
+      throw Exception('Geçersiz veya yetkisiz turnuva.');
+    }
+
+    // Hem turKazanan hem de aktifMi kontrolü yapılır
+    final turData = turDoc.data() ?? {};
+    final bool isFinished = turData['turKazanan'] != null;
+    final bool isActive = turData['aktifMi'] == true;
+
+    if (isFinished || !isActive) {
+      throw Exception(
+        isFinished
+            ? 'Bu turnuva zaten sonlandırılmış. Yeni oyun eklenemez.'
+            : 'Bu turnuva pasif durumda. Lütfen aktif bir turnuva seçin.',
+      );
+    }
+
+    // ✅ DEĞİŞİKLİK: Grup bazlı numaratör (metadata > oyun_numarasi_{grupId})
     final numaraRef = _fs
-        .collection('gruplar')
-        .doc(k.grupId!)
-        .collection('numarator')
-        .doc('oyun');
+        .collection('metadata')
+        .doc('oyun_numarasi_${k.grupId}');
     int yeniNumara = 1;
 
     await _fs.runTransaction((tx) async {
@@ -63,33 +79,31 @@ class OyunServisi {
 
     final ref = _fs.collection('oyunlar').doc();
     await ref.set({
-      'numara': yeniNumara,
+      'numara': yeniNumara, // ✅ Oyunun kendi içinde de numara görünür
       'turId': turId,
       'oyunTarih': oyunTarih,
       'elSayisi': elSayisi,
       'oyuncuSayisi': oyuncuSayisi,
-      
-      // ✅ HEM İSİM (GÖRSEL) HEM UID (VERİTABANI) KAYDEDİLİYOR
-      'oyuncu': oyuncular, 
-      'oyuncuIds': oyuncuIds, 
-      
+      'oyuncu': oyuncular,
+      'oyuncuIds': oyuncuIds,
       'esliMi': esliMi ? 1 : 0,
       'yuksekSkorKazanir': yuksekSkorKazanir ? 1 : 0,
       'grupId': k.grupId,
       'olusturma': FieldValue.serverTimestamp(),
+      'aktifMi': true,
     });
     return ref.id;
   }
 
-  // ✅ OYUN SONLANDIRMA (UID DESTEKLİ)
+  // ✅ OYUN SONLANDIRMA (UID DESTEKLİ + AKTİF Mİ GÜNCELLEMESİ)
   Future<void> oyunuSonlandir(
     String oyunId,
     String kazananIsim,
     String kaybedenIsim,
     String? ikinciIsim,
     String? ucuncuIsim,
-    String? kazananUid, // ✅ YENİ
-    String? kaybedenUid, // ✅ YENİ
+    String? kazananUid,
+    String? kaybedenUid,
   ) async {
     final k = await AuthService().profilGarantile();
     final doc = await _fs.collection('oyunlar').doc(oyunId).get();
@@ -103,12 +117,12 @@ class OyunServisi {
       'oyunKaybeden': kaybedenIsim,
       'oyunIkinci': ikinciIsim,
       'oyunUcuncu': ucuncuIsim,
-      
-      // ✅ UID ALANLARI DA GÜNCELLENİYOR
+
       'oyunKazananUid': kazananUid,
       'oyunKaybedenUid': kaybedenUid,
-      
+
       'bitisTarihi': FieldValue.serverTimestamp(),
+      'aktifMi': false, // ✅ Oyun bitince otomatik pasife alınır
     });
   }
 
@@ -200,7 +214,7 @@ class OyunServisi {
     await _fs.collection('oyunlar').doc(id).update(data);
   }
 
-  // 🔒 AKTİF OYUN BULMA
+  // 🔒 AKTİF OYUN BULMA (GÜNCELLENDİ: aktifMi KONTROLÜ EKLENDİ)
   Future<Oyun?> aktifOyunBul() async {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) return null;
@@ -209,6 +223,10 @@ class OyunServisi {
         .collection('oyunlar')
         .where('grupId', isEqualTo: k.grupId)
         .where('oyunKazanan', isEqualTo: null)
+        .where(
+          'aktifMi',
+          isEqualTo: true,
+        ) // ✅ Sadece gerçekten aktif olanları getir
         .limit(1)
         .get();
 

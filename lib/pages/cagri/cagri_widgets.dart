@@ -15,7 +15,7 @@ class CagriDurumBilgisi {
   const CagriDurumBilgisi(this.etiket, this.renk, this.ikon);
 }
 
-/// Çağrı Kartı Bileşeni - 3 SATIRLI YENİ TASARIM
+/// Çağrı Kartı Bileşeni - DÜZELTİLMİŞ SAYIM MANTIĞI
 class CagriKarti extends StatelessWidget {
   final Cagri cagri;
   final String uid;
@@ -53,17 +53,20 @@ class CagriKarti extends StatelessWidget {
   }
 
   Future<void> _konumuAc(BuildContext context) async {
-    // Önce konumAd'ye bak, yoksa yer ismine bak
     String? aramaMetni = cagri.konumAd;
     if (aramaMetni == null || aramaMetni.isEmpty) {
       aramaMetni = cagri.yer;
     }
-
     if (aramaMetni == null || aramaMetni.isEmpty) return;
 
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(aramaMetni)}',
-    );
+    Uri uri;
+    if (aramaMetni.startsWith('http://') || aramaMetni.startsWith('https://')) {
+      uri = Uri.parse(aramaMetni);
+    } else {
+      uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(aramaMetni)}',
+      );
+    }
 
     try {
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -137,8 +140,21 @@ class CagriKarti extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = _durum;
-    final onaySayisi = cagri.onaylar.length + 1;
-    final toplam = cagri.hedef;
+
+    // ✅ KRİTİK DÜZELTME: Sayım Mantığı
+    // cagri.hedef: Davetli sayısı (Örn: 3)
+    // Toplam Katılımcı: Davetli + Çağrıcı (3 + 1 = 4)
+    final toplamKatilimci = cagri.hedef + 1;
+
+    // Onay Sayısı Hesaplama:
+    // PanoVerisi.cagri içindeki mantıkla uyumlu olması için:
+    // Eğer çağrıcı (acanId) onaylar listesinde YOKSA, listedeki sayıya +1 ekleriz.
+    // Eğer VARSA (bazen sistem ekleyebilir), direkt liste uzunluğunu alırız.
+    int onaySayisi = cagri.onaylar.length;
+    if (!cagri.onaylar.contains(cagri.acanId)) {
+      onaySayisi += 1;
+    }
+
     final aktif = cagri.acik || cagri.kilitli;
 
     return Padding(
@@ -163,7 +179,6 @@ class CagriKarti extends StatelessWidget {
                 width: aktif ? 1.4 : 1,
               ),
             ),
-            // ✅ 3 SATIRLI COLUMN YAPISI
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -192,8 +207,9 @@ class CagriKarti extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // ✅ DÜZELTİLDİ: Artık her zaman (Onay / ToplamKatılımcı) formatında
                     Text(
-                      '$onaySayisi/$toplam',
+                      '$onaySayisi/$toplamKatilimci',
                       style: TextStyle(
                         color: d.renk,
                         fontWeight: FontWeight.w900,
@@ -207,10 +223,9 @@ class CagriKarti extends StatelessWidget {
 
                 const SizedBox(height: 8),
 
-                // --- 2. SATIR: TARİH VE SAAT YAN YANA ---
+                // --- 2. SATIR: TARİH VE SAAT ---
                 Row(
                   children: [
-                    // Tarih varsa göster
                     if (cagri.tarih != null && cagri.tarih!.isNotEmpty) ...[
                       Icon(
                         Icons.calendar_today_outlined,
@@ -227,8 +242,6 @@ class CagriKarti extends StatelessWidget {
                         ),
                       ),
                     ],
-
-                    // Saat varsa göster (Tarih varsa araya boşluk koy)
                     if (cagri.saat != null && cagri.saat!.isNotEmpty) ...[
                       if (cagri.tarih != null && cagri.tarih!.isNotEmpty)
                         const SizedBox(width: 12),
@@ -247,8 +260,6 @@ class CagriKarti extends StatelessWidget {
                         ),
                       ),
                     ],
-
-                    // Hiçbiri yoksa varsayılan ikon
                     if ((cagri.tarih == null || cagri.tarih!.isEmpty) &&
                         (cagri.saat == null || cagri.saat!.isEmpty)) ...[
                       Icon(Icons.schedule, color: AppColors.divider, size: 14),
@@ -266,7 +277,7 @@ class CagriKarti extends StatelessWidget {
 
                 const SizedBox(height: 8),
 
-                // --- 3. SATIR: MEKAN + AKSİYON BUTONLARI ---
+                // --- 3. SATIR: MEKAN + AKSİYONLAR ---
                 Row(
                   children: [
                     Icon(Icons.place, color: AppColors.accentBlue, size: 14),
@@ -287,8 +298,6 @@ class CagriKarti extends StatelessWidget {
                         ),
                       ),
                     ),
-
-                    // Butonlar sadece çağrı sahibine ve açıkken görünür
                     if (_benAcan && cagri.acik) ...[
                       const SizedBox(width: 8),
                       IconButton(

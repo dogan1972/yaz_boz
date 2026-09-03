@@ -2,10 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:yaz_boz/models/sezon_model.dart';
 import 'package:yaz_boz/services/sezon_servisi.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
-Widget sezonNumaraRozeti(
-  int? n, {
+Widget sezonNumaraRozeti({
+  int? n,
   Color renk = AppColors.accentBlue,
   double? font,
 }) {
@@ -268,17 +268,23 @@ Future<void> sezonFormuDiyalog(BuildContext context, {Sezon? sezon}) async {
                 );
 
                 if (sezon == null) {
+                  // Yeni sezon her zaman aktif oluşturulur
                   await svc.yeniSezonOlustur(
                     tarih: tarihCtrl.text.trim(),
                     isLowestWins: isLowestWins,
                   );
                 } else {
+                  // ✅ MEVCUT SEZON GÜNCELLENİRKEN AKTİF Mİ DURUMU KORUNUR
+                  // Eğer kullanıcı şampiyon eklediyse ve sezon hala aktifse,
+                  // bu bir "sonlandırma" değil sadece "düzenleme" olarak kabul edilir.
+                  // Gerçek sonlandırma için _sezonuSonlandir metodu kullanılmalıdır.
                   await svc.sezonuGuncelle(sezon.id, {
                     'sezonTarih': tarihCtrl.text.trim(),
                     'sezonSampiyon': sampiyonCtrl.text.trim().isEmpty
                         ? null
                         : sampiyonCtrl.text.trim(),
                     'isLowestWins': isLowestWins,
+                    // ✅ aktifMi alanı burada ASLA değiştirilmez
                   });
                 }
 

@@ -51,6 +51,9 @@ class Oyun {
   final bool yuksekSkorKazanir;
   final String? grupId;
 
+  // ✅ ZİNCİRLEME SONLANDIRMA İÇİN EKLENDİ
+  final bool aktifMi;
+
   const Oyun({
     required this.id,
     this.numara,
@@ -59,14 +62,15 @@ class Oyun {
     required this.elSayisi,
     required this.oyuncuSayisi,
     required this.oyuncu,
-    this.oyuncuIds, // ✅ YENİ
-    this.oyunKazananUid, // ✅ YENİ
-    this.oyunKaybedenUid, // ✅ YENİ
+    this.oyuncuIds,
+    this.oyunKazananUid,
+    this.oyunKaybedenUid,
     this.oyunKazanan,
     this.oyunKaybeden,
     required this.esliMi,
     this.yuksekSkorKazanir = false,
     this.grupId,
+    this.aktifMi = true, // ✅ Varsayılan olarak aktif
   });
 
   factory Oyun.fromFirestore(DocumentSnapshot doc) {
@@ -100,6 +104,9 @@ class Oyun {
       yuksekSkorKazanir:
           data['yuksekSkorKazanir'] == true || data['yuksekSkorKazanir'] == 1,
       grupId: data['grupId']?.toString(),
+
+      // ✅ AKTİF Mİ ALANINI OKU (Eski kayıtlar için fallback: true)
+      aktifMi: data['aktifMi'] ?? true,
     );
   }
 
@@ -121,5 +128,8 @@ class Oyun {
     'esliMi': esliMi ? 1 : 0,
     'yuksekSkorKazanir': yuksekSkorKazanir ? 1 : 0,
     'grupId': grupId,
+
+    // ✅ AKTİF Mİ ALANINI KAYDET
+    'aktifMi': aktifMi,
   };
 }
