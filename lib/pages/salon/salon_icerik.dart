@@ -1,4 +1,5 @@
 // lib/pages/salon/salon_icerik.dart
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,10 +27,13 @@ class _SalonIcerikState extends State<SalonIcerik>
   Timer? _flashTimer;
   late final AnimationController _muhur;
 
+  Set<String> _yuklenenProfilIds = {};
+
   Cagri get c => widget.cagri;
   bool get acanMi => c.acanId == widget.uid;
   bool get sonlandiMi => c.durum == 'sonlandi';
-  List<String> get _koltukUid => [c.acanId, ...c.davetliIds];
+
+  List<String> get _koltukUid => c.davetliIds;
 
   Future<void> _konumuAc() async {
     String hedefUrl;
@@ -76,6 +80,7 @@ class _SalonIcerikState extends State<SalonIcerik>
   @override
   void didUpdateWidget(covariant SalonIcerik old) {
     super.didUpdateWidget(old);
+
     if (c.kilitli && !_oncekiKilit) {
       _oncekiKilit = true;
       setState(() => _flashKilit = true);
@@ -84,6 +89,11 @@ class _SalonIcerikState extends State<SalonIcerik>
       _flashTimer = Timer(const Duration(milliseconds: 850), () {
         if (mounted) setState(() => _flashKilit = false);
       });
+    }
+
+    if (old.cagri.davetliIds != c.davetliIds) {
+      _yuklenenProfilIds.clear();
+      _profilYukle();
     }
   }
 
@@ -97,14 +107,27 @@ class _SalonIcerikState extends State<SalonIcerik>
   Future<void> _profilYukle() async {
     final ids = _koltukUid;
     if (ids.isEmpty) return;
-    final snap = await FirebaseFirestore.instance
-        .collection('kullanicilar')
-        .where(FieldPath.documentId, whereIn: ids)
-        .get();
-    if (!mounted) return;
-    setState(() {
-      _profil = {for (final d in snap.docs) d.id: Kullanici.fromFirestore(d)};
-    });
+
+    if (_yuklenenProfilIds.containsAll(ids) &&
+        _yuklenenProfilIds.length == ids.length) {
+      return;
+    }
+
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('kullanicilar')
+          .where(FieldPath.documentId, whereIn: ids)
+          .get();
+
+      if (!mounted) return;
+
+      setState(() {
+        _profil = {for (final d in snap.docs) d.id: Kullanici.fromFirestore(d)};
+        _yuklenenProfilIds = ids.toSet();
+      });
+    } catch (e) {
+      debugPrint('Profil yükleme hatası: $e');
+    }
   }
 
   String _ad(String uid) =>
@@ -112,89 +135,16 @@ class _SalonIcerikState extends State<SalonIcerik>
 
   @override
   Widget build(BuildContext context) {
+    final bool yatay =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Stack(
       children: [
         const SalonToz(),
         SafeArea(
-          child: LayoutBuilder(
-            builder: (context, con) => Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _baslik(),
-                  const SizedBox(height: 8),
-                  Expanded(child: _masa()),
-                  const SizedBox(height: 12),
-
-                  // Konum Linki (Alt Kısım)
-                  if (c.yer != null && c.yer!.isNotEmpty)
-                    GestureDetector(
-                      onTap: _konumuAc,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.cardBg,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.place,
-                              color: AppColors.accentBlue,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    c.yer!,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                  if (c.konumAd != null &&
-                                      c.konumAd!.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      c.konumAd!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: AppColors.accentBlue,
-                                        fontSize: 12,
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            const Icon(
-                              Icons.check_circle,
-                              color: AppColors.accentCyan,
-                              size: 20,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                  _durumSeridi(),
-                ],
-              ),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: yatay ? _yatayDuzen() : _dikeyDuzen(),
           ),
         ),
         if (_flashKilit) SalonKilitFlash(muhur: _muhur),
@@ -202,7 +152,66 @@ class _SalonIcerikState extends State<SalonIcerik>
     );
   }
 
-  Widget _baslik() {
+  // ✅ MEVCUT DİKEY DÜZEN
+  Widget _dikeyDuzen() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _baslik(),
+        const SizedBox(height: 8),
+        Expanded(child: _masa()),
+        const SizedBox(height: 12),
+        if (c.yer != null && c.yer!.isNotEmpty) _konumKarti(),
+        _durumSeridi(),
+      ],
+    );
+  }
+
+  // ✅ YENİ YATAY DÜZEN (Ergonomik Split-View)
+  Widget _yatayDuzen() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // SOL: MASA (%55 - Daha geniş alan)
+        Expanded(
+          flex: 55,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _baslik(kucukBaslik: true),
+              const SizedBox(height: 20),
+              Expanded(child: _masa(yatayMod: true)),
+            ],
+          ),
+        ),
+
+        const SizedBox(width: 32),
+
+        // SAĞ: BİLGİLER (%45 - Dikeyde ortalı ve scrollable)
+        Expanded(
+          flex: 45,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (c.yer != null && c.yer!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: _konumKarti(),
+                  ),
+                _durumSeridi(yatayMod: true),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _baslik({bool kucukBaslik = false}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -212,10 +221,10 @@ class _SalonIcerikState extends State<SalonIcerik>
             children: [
               Text(
                 sonlandiMi ? 'ARŞİV · SALON' : 'BULUŞMA SALONU',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.textSecondary,
                   fontWeight: FontWeight.w700,
-                  fontSize: 11,
+                  fontSize: kucukBaslik ? 10 : 11,
                   letterSpacing: 2.6,
                 ),
               ),
@@ -229,7 +238,7 @@ class _SalonIcerikState extends State<SalonIcerik>
                       ? AppColors.textSecondary
                       : AppColors.textPrimary,
                   fontWeight: FontWeight.w900,
-                  fontSize: 30,
+                  fontSize: kucukBaslik ? 24 : 30,
                   height: 1.0,
                   letterSpacing: -1.0,
                 ),
@@ -237,114 +246,117 @@ class _SalonIcerikState extends State<SalonIcerik>
             ],
           ),
         ),
-        if (c.kilitli)
-          Padding(
-            padding: const EdgeInsets.only(top: 18),
-            child: Transform.rotate(
-              angle: -0.12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: AppColors.accentCyan.withValues(alpha: 0.7),
-                    width: 1.6,
-                  ),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.verified_user_rounded,
-                      color: AppColors.accentCyan,
-                      size: 12,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'MÜHÜRLENDİ',
-                      style: TextStyle(
-                        color: AppColors.accentCyan,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 9,
-                        letterSpacing: 1.6,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        if (sonlandiMi)
-          Padding(
-            padding: const EdgeInsets.only(top: 18),
-            child: Transform.rotate(
-              angle: -0.12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: AppColors.textSecondary.withValues(alpha: 0.7),
-                    width: 1.6,
-                  ),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.power_settings_new,
-                      color: AppColors.textSecondary,
-                      size: 12,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'SONLANDI',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 9,
-                        letterSpacing: 1.6,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        if (c.kilitli) _muhurRozeti(),
+        if (sonlandiMi) _sonlandiRozeti(),
       ],
     );
   }
 
-  Widget _masa() {
+  Widget _muhurRozeti() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Transform.rotate(
+        angle: -0.12,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: AppColors.accentCyan.withValues(alpha: 0.7),
+              width: 1.6,
+            ),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.verified_user_rounded,
+                color: AppColors.accentCyan,
+                size: 12,
+              ),
+              SizedBox(width: 4),
+              Text(
+                'MÜHÜRLENDİ',
+                style: TextStyle(
+                  color: AppColors.accentCyan,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 9,
+                  letterSpacing: 1.6,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sonlandiRozeti() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Transform.rotate(
+        angle: -0.12,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: AppColors.textSecondary.withValues(alpha: 0.7),
+              width: 1.6,
+            ),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.power_settings_new,
+                color: AppColors.textSecondary,
+                size: 12,
+              ),
+              SizedBox(width: 4),
+              Text(
+                'SONLANDI',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 9,
+                  letterSpacing: 1.6,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _masa({bool yatayMod = false}) {
     final koltuklar = _koltukUid;
+    final sandalyeBoyutu = yatayMod ? 52.0 : 64.0;
 
     if (koltuklar.length <= 8) {
       return LayoutBuilder(
         builder: (context, con) {
           final w = con.maxWidth;
           final h = con.maxHeight;
-          final cx = w / 2;
-          final cy = h * 0.44;
-          final rx = w * 0.36;
-          final ry = h * 0.32;
 
-          // Pusula yönlerine göre sabit pozisyonlar
+          // ✅ YATAY MODDA MASAYI TAM ORTAYA HİZALA
+          final cx = w / 2;
+          final cy = h / 2;
+
+          // Yatay modda elipsi biraz daha basık yap ki sığsın
+          final rx = w * 0.36;
+          final ry = h * 0.36;
+
           final List<Offset> pusulaPozisyonlari = [
             Offset(cx, cy - ry), // Kuzey
             Offset(cx + rx, cy), // Doğu
             Offset(cx, cy + ry), // Güney
             Offset(cx - rx, cy), // Batı
-
-            Offset(cx - rx * 0.7, cy - ry * 0.7), // KuzeyBatı
-            Offset(cx + rx * 0.7, cy - ry * 0.7), // KuzeyDoğu
-            Offset(cx + rx * 0.7, cy + ry * 0.7), // GüneyDoğu
-            Offset(cx - rx * 0.7, cy + ry * 0.7), // GüneyBatı
+            Offset(cx - rx * 0.7, cy - ry * 0.7), // Kuzey-Batı
+            Offset(cx + rx * 0.7, cy - ry * 0.7), // Kuzey-Doğu
+            Offset(cx + rx * 0.7, cy + ry * 0.7), // Güney-Doğu
+            Offset(cx - rx * 0.7, cy + ry * 0.7), // Güney-Batı
           ];
 
           return Stack(
@@ -354,28 +366,26 @@ class _SalonIcerikState extends State<SalonIcerik>
                   painter: SalonMasaBoyaci(solgun: sonlandiMi),
                 ),
               ),
-
-              // Merkez Bilgi
+              // Orta bilgiyi de merkeze sabitle
               Positioned(
                 left: cx - 78,
                 top: cy - 44,
                 width: 156,
                 child: SalonOrtaBilgi(cagri: c),
               ),
-
               for (
                 var i = 0;
                 i < koltuklar.length && i < pusulaPozisyonlari.length;
                 i++
               )
                 Positioned(
-                  left: pusulaPozisyonlari[i].dx - 42,
-                  top: pusulaPozisyonlari[i].dy - 32,
+                  left: pusulaPozisyonlari[i].dx - (sandalyeBoyutu / 2 + 10),
+                  top: pusulaPozisyonlari[i].dy - (sandalyeBoyutu / 2 + 10),
                   width: 120,
                   child: SalonSandalye(
                     uid: koltuklar[i],
                     ad: _ad(koltuklar[i]),
-                    acan: i == 0,
+                    acan: koltuklar[i] == c.acanId,
                     onayli: c.onaylar.contains(koltuklar[i]),
                     benim: koltuklar[i] == widget.uid,
                     cagri: c,
@@ -387,13 +397,12 @@ class _SalonIcerikState extends State<SalonIcerik>
         },
       );
     } else {
-      // 8'den fazla ise liste görünümü
       return ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 10),
         itemCount: koltuklar.length,
         itemBuilder: (ctx, i) {
           final uid = koltuklar[i];
-          final acan = i == 0;
+          final acan = uid == c.acanId;
           final onayli = c.onaylar.contains(uid);
           final benim = uid == widget.uid;
 
@@ -457,8 +466,6 @@ class _SalonIcerikState extends State<SalonIcerik>
                       ],
                     ),
                   ),
-                  // ✅ DÜZELTME: Mühürlü çağrıda da onay butonu aktif
-                  // c.yer kontrolü kaldırıldı — mühürlü olsa bile onaylanabilsin
                   if (!acan && !onayli && benim)
                     Material(
                       color: AppColors.accentCyan,
@@ -497,9 +504,66 @@ class _SalonIcerikState extends State<SalonIcerik>
     }
   }
 
-  Widget _durumSeridi() {
-    final toplam = c.davetliIds.length + 1;
-    final onay = (c.onaylar.length + 1).clamp(0, toplam);
+  Widget _konumKarti() {
+    return GestureDetector(
+      onTap: _konumuAc,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.place, color: AppColors.accentBlue, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c.yer!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  if (c.konumAd != null && c.konumAd!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      c.konumAd!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.accentBlue,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.check_circle,
+              color: AppColors.accentCyan,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _durumSeridi({bool yatayMod = false}) {
+    final toplam = c.hedef;
+    final onay = c.onaySayisi;
+
     return Row(
       children: [
         Expanded(

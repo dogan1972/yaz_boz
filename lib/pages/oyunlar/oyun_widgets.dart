@@ -1,7 +1,9 @@
 // lib/pages/oyunlar/oyun_widgets.dart
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:yaz_boz/models/oyun_model.dart';
-import 'package:yaz_boz/services/oyun_servisi.dart';
+import 'package:yaz_boz/services/auth_service.dart'; // ✅ EKLENDİ (grupId için)
 import 'package:yaz_boz/theme/app_theme.dart';
 
 /// Numara Rozeti
@@ -104,47 +106,63 @@ Future<void> oyunFormuDiyalog(
   BuildContext pageContext, {
   Oyun? oyun,
   required List<Oyuncu> guncelOyuncuListesi,
-  required List<TurBilgisi> turnuvalar,
+  required List<dynamic> turnuvalar,
 }) async {
+  // ✅ TARİH VE NUMARA HAZIRLIĞI
+  String bugunTarih = DateFormat('dd.MM.yyyy').format(DateTime.now());
+  int mevcutOyunNo = oyun?.numara ?? 0;
+
+  String varsayilanBaslik =
+      '$bugunTarih - Oyun ${mevcutOyunNo > 0 ? mevcutOyunNo : '?'}';
+
   final tarihCtrl = TextEditingController(
-    text: oyun?.oyunTarih ?? DateTime.now().toString().substring(0, 10),
+    text: oyun?.oyunTarih ?? varsayilanBaslik,
   );
+
   final elSayisiCtrl = TextEditingController(
     text: oyun?.elSayisi.toString() ?? '8',
   );
 
-  bool isEsli = oyun?.esliMi ?? false;
-  bool isYuksekKazanir = oyun?.yuksekSkorKazanir ?? false;
+  // ✅ BOOL KARŞILAŞTIRMALARI DÜZELTİLDİ (int/bool karışıklığı giderildi)
+  bool isEsli =
+      oyun?.esliMi == true ||
+      (oyun?.esliMi is int && (oyun?.esliMi as int) == 1);
+  bool isYuksekKazanir =
+      oyun?.yuksekSkorKazanir == true ||
+      (oyun?.yuksekSkorKazanir is int && (oyun?.yuksekSkorKazanir as int) == 1);
+  // ✅ TURNUVA FİLTRESİ (Tip güvenliği eklendi)
+  final aktifTurnuvalar = <dynamic>[];
+  for (var t in turnuvalar) {
+    try {
+      if (t.turKazanan == null && t.aktifMi == true) {
+        aktifTurnuvalar.add(t);
+      }
+    } catch (_) {}
+  }
 
-  // ✅ SADECE AKTİF TURNUVALARI FİLTRELE
-  // Düzenleme modunda bile pasif turnuvaların seçilmesini engeller
-  final aktifTurnuvalar = turnuvalar
-      .where((t) => t.turKazanan == null)
-      .toList();
+  String? selectedTurId;
+  if (oyun != null) {
+    selectedTurId = oyun.turId;
+  } else if (aktifTurnuvalar.isNotEmpty) {
+    selectedTurId = aktifTurnuvalar.first.id;
+  }
 
-  String? selectedTurId =
-      oyun?.turId ??
-      (aktifTurnuvalar.isNotEmpty ? aktifTurnuvalar.first.id : null);
-
-  // ✅ EĞER OYUN DÜZENLENİYORSA AMA TURNUVA PASİFE ALINMIŞSA UYAR
   if (oyun != null && selectedTurId != null) {
-    final seciliTurnuva = turnuvalar.firstWhere(
-      (t) => t.id == selectedTurId,
-      orElse: () => TurBilgisi(id: '', turTarih: ''),
-    );
+    dynamic seciliTurnuva;
+    try {
+      seciliTurnuva = turnuvalar.firstWhere((t) => t.id == selectedTurId);
+    } catch (_) {
+      seciliTurnuva = null;
+    }
 
-    // Eğer seçili turnuva listede yoksa veya kazananı varsa (pasifse)
-    if (seciliTurnuva.id.isEmpty || seciliTurnuva.turKazanan != null) {
-      // Kullanıcıyı bilgilendir ve seçimi sıfırla
+    if (seciliTurnuva == null || seciliTurnuva.turKazanan != null) {
       selectedTurId = aktifTurnuvalar.isNotEmpty
           ? aktifTurnuvalar.first.id
           : null;
-
-      // Dialog açılmadan önce uyarı göstermek için Future kullanıyoruz
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (pageContext.mounted) {
           ScaffoldMessenger.of(pageContext).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text(
                 'Bağlı turnuva sonlandırıldığı için yeni bir turnuva seçmeniz gerekiyor.',
               ),
@@ -156,15 +174,20 @@ Future<void> oyunFormuDiyalog(
     }
   }
 
+  // ✅ 177-189. SATIRLAR (Oyuncu listesi - güvenli erişim)
   List<String> masaSirasiIsimleri = [];
   List<String> seciliUidler = [];
 
   if (oyun != null) {
+    // Oyuncu ID'leri
     if (oyun.oyuncuIds != null && oyun.oyuncuIds!.isNotEmpty) {
       seciliUidler = List.from(oyun.oyuncuIds!);
     }
-    if (oyun.oyuncu.isNotEmpty) {
-      masaSirasiIsimleri = oyun.oyuncu
+
+    // Oyuncu isimleri (split işlemi için null kontrolü)
+    final oyuncuStr = oyun.oyuncu;
+    if (oyuncuStr.isNotEmpty) {
+      masaSirasiIsimleri = oyuncuStr
           .split(',')
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
@@ -192,7 +215,7 @@ Future<void> oyunFormuDiyalog(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ DROPDOWN SADECE AKTİF TURNUVALARI GÖSTERİR
+                // ✅ DROPDOWN (Tip dönüşümü yapıldı)
                 if (aktifTurnuvalar.isNotEmpty)
                   DropdownButtonFormField<String>(
                     initialValue: selectedTurId,
@@ -203,16 +226,11 @@ Future<void> oyunFormuDiyalog(
                       fillColor: AppColors.inputBg,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: AppColors.border),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: AppColors.border),
                       ),
                     ),
                     items: aktifTurnuvalar
-                        .map(
-                          (t) => DropdownMenuItem(
+                        .map<DropdownMenuItem<String>>(
+                          (t) => DropdownMenuItem<String>(
                             value: t.id,
                             child: Text(t.turTarih),
                           ),
@@ -249,48 +267,32 @@ Future<void> oyunFormuDiyalog(
                   ),
 
                 const SizedBox(height: 12),
-
                 TextField(
                   controller: tarihCtrl,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Oyun Tarihi / Adı',
-                    labelStyle: const TextStyle(color: AppColors.textHint),
                     filled: true,
                     fillColor: AppColors.inputBg,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.border),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 TextField(
                   controller: elSayisiCtrl,
                   keyboardType: TextInputType.number,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'El Sayısı',
-                    labelStyle: const TextStyle(color: AppColors.textHint),
                     filled: true,
                     fillColor: AppColors.inputBg,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.border),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 16),
 
                 const Text(
@@ -319,7 +321,7 @@ Future<void> oyunFormuDiyalog(
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Arkadaş listesi boş! Önce arkadaş ekleyin.',
+                            'Arkadaş listesi boş!',
                             style: TextStyle(
                               color: AppColors.accentAmber,
                               fontSize: 12,
@@ -362,18 +364,11 @@ Future<void> oyunFormuDiyalog(
                         backgroundColor: AppColors.border,
                         selectedColor: AppColors.accentCyan,
                         checkmarkColor: Colors.black,
-                        side: BorderSide(
-                          color: isSelected
-                              ? AppColors.accentCyan
-                              : AppColors.divider,
-                          width: isSelected ? 2 : 1,
-                        ),
                       );
                     }).toList(),
                   ),
 
                 const SizedBox(height: 16),
-
                 if (masaSirasiIsimleri.isNotEmpty) ...[
                   const Text(
                     'Masadaki Sıra:',
@@ -476,6 +471,7 @@ Future<void> oyunFormuDiyalog(
                   const SizedBox(height: 16),
                 ],
 
+                // Eşli/Bireysel Switch
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -498,25 +494,15 @@ Future<void> oyunFormuDiyalog(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              isEsli
-                                  ? 'Eşli Oyun (2v2 Takım)'
-                                  : 'Bireysel Oyun',
+                              isEsli ? 'Eşli Oyun (2v2)' : 'Bireysel Oyun',
                               style: TextStyle(
                                 color: isEsli
                                     ? AppColors.accentCyan
                                     : AppColors.textPrimary,
                                 fontWeight: FontWeight.w700,
-                                fontSize: 14,
                               ),
                             ),
                             const SizedBox(height: 2),
-                            const Text(
-                              'Eşli oyunda tahtada 4 oyuncu ikişerli takım olarak gruplanır',
-                              style: TextStyle(
-                                color: AppColors.textHint,
-                                fontSize: 11,
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -528,9 +514,9 @@ Future<void> oyunFormuDiyalog(
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 12),
 
+                // Kazanma Şartı Switch
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -563,17 +549,9 @@ Future<void> oyunFormuDiyalog(
                                     ? AppColors.accentGreen
                                     : AppColors.accentRed,
                                 fontWeight: FontWeight.w700,
-                                fontSize: 14,
                               ),
                             ),
                             const SizedBox(height: 2),
-                            const Text(
-                              'Oyun sonunda kazananı belirler',
-                              style: TextStyle(
-                                color: AppColors.textHint,
-                                fontSize: 11,
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -617,10 +595,8 @@ Future<void> oyunFormuDiyalog(
               }
 
               try {
-                final svc = OyunServisi();
                 if (!dialogContext.mounted) return;
                 Navigator.pop(dialogContext);
-
                 if (pageContext.mounted) {
                   showDialog(
                     context: pageContext,
@@ -632,28 +608,64 @@ Future<void> oyunFormuDiyalog(
 
                 final oyuncuString = masaSirasiIsimleri.join(', ');
 
+                // ✅ GLOBAL NUMARATOR GÜNCELLEMESİ
+                int oyunNo = mevcutOyunNo;
                 if (oyun == null) {
-                  await svc.yeniOyunOlustur(
-                    turId: selectedTurId!,
-                    oyunTarih: tarihCtrl.text.trim(),
-                    elSayisi: int.tryParse(elSayisiCtrl.text) ?? 8,
-                    oyuncuSayisi: seciliUidler.length,
-                    oyuncular: oyuncuString,
-                    oyuncuIds: seciliUidler,
-                    esliMi: isEsli,
-                    yuksekSkorKazanir: isYuksekKazanir,
-                  );
-                } else {
-                  await svc.oyunuGuncelle(oyun.id, {
+                  final nRef = FirebaseFirestore.instance
+                      .collection('metadata')
+                      .doc('oyun_numarasi');
+                  await FirebaseFirestore.instance.runTransaction((tx) async {
+                    final doc = await tx.get(nRef);
+                    if (doc.exists) {
+                      oyunNo = (doc.data()?['son_numara'] ?? 0) + 1;
+                      tx.update(nRef, {'son_numara': oyunNo});
+                    } else {
+                      tx.set(nRef, {'son_numara': 1});
+                      oyunNo = 1;
+                    }
+                  });
+
+                  String finalTarih = tarihCtrl.text.trim();
+                  if (!finalTarih.contains('Oyun')) {
+                    finalTarih = '$finalTarih - Oyun $oyunNo';
+                  }
+                  tarihCtrl.text = finalTarih;
+                }
+
+                // ✅ GRUP ID ALMA (AuthService üzerinden)
+                final k = await AuthService().profilGarantile();
+                final grupId = k?.grupId;
+
+                if (oyun == null) {
+                  await FirebaseFirestore.instance.collection('oyunlar').add({
                     'turId': selectedTurId,
                     'oyunTarih': tarihCtrl.text.trim(),
                     'elSayisi': int.tryParse(elSayisiCtrl.text) ?? 8,
                     'oyuncuSayisi': seciliUidler.length,
-                    'oyuncu': oyuncuString,
+                    'oyuncular': oyuncuString,
                     'oyuncuIds': seciliUidler,
-                    'esliMi': isEsli ? 1 : 0,
-                    'yuksekSkorKazanir': isYuksekKazanir ? 1 : 0,
+                    'esliMi': isEsli,
+                    'yuksekSkorKazanir': isYuksekKazanir,
+                    'numara': oyunNo,
+                    'grupId': grupId,
+                    'aktifMi': true,
+                    'olusturma': FieldValue.serverTimestamp(),
                   });
+                } else {
+                  await FirebaseFirestore.instance
+                      .collection('oyunlar')
+                      .doc(oyun.id)
+                      .update({
+                        'turId': selectedTurId,
+                        'oyunTarih': tarihCtrl.text.trim(),
+                        'elSayisi': int.tryParse(elSayisiCtrl.text) ?? 8,
+                        'oyuncuSayisi': seciliUidler.length,
+                        'oyuncu': oyuncuString,
+                        'oyuncuIds': seciliUidler,
+                        'esliMi': isEsli,
+                        'yuksekSkorKazanir': isYuksekKazanir,
+                        'guncelleme': FieldValue.serverTimestamp(),
+                      });
                 }
 
                 if (!pageContext.mounted) return;

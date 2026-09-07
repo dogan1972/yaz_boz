@@ -1,5 +1,6 @@
 // lib/services/turnuva_servisi.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:yaz_boz/models/turnuva_model.dart';
 import 'package:yaz_boz/services/auth_service.dart';
 
@@ -31,7 +32,7 @@ class TurnuvaServisi {
         });
   }
 
-  //  AKTİF TURNUVA BULMA
+  // 🔒 AKTİF TURNUVA BULMA
   Future<Turnuva?> aktifTurnuvaBul() async {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) return null;
@@ -47,47 +48,54 @@ class TurnuvaServisi {
     return Turnuva.fromFirestore(snap.docs.first);
   }
 
-  // ✅ YENİ TURNUVA OLUŞTURMA
+  // ✅ YENİ TURNUVA OLUŞTURMA (HATA YÖNETİMİ EKLENDİ - LOADING SORUNU ÇÖZÜLDÜ)
   Future<String> yeniTurnuvaOlustur({
     required String sezonId,
     required String turTarih,
     required bool isLowestWins,
   }) async {
-    final k = await AuthService().profilGarantile();
-    if (k == null) throw Exception('Kullanıcı profili bulunamadı.');
+    try {
+      final k = await AuthService().profilGarantile();
+      if (k == null || k.grupId == null) throw Exception('Grup bilgisi eksik.');
 
-    final numaraRef = _fs
-        .collection('metadata')
-        .doc('turnuva_numarasi_${k.grupId}');
-    int yeniNumara = 1;
+      // Numaratör İşlemi
+      final numaraRef = _fs
+          .collection('metadata')
+          .doc('turnuva_numarasi_${k.grupId}');
+      int yeniNumara = 1;
 
-    await _fs.runTransaction((tx) async {
-      final doc = await tx.get(numaraRef);
-      if (doc.exists) {
-        final current = (doc.data()?['son_numara'] ?? 0) as int;
-        yeniNumara = current + 1;
-        tx.update(numaraRef, {'son_numara': yeniNumara});
-      } else {
-        tx.set(numaraRef, {'son_numara': 1});
-      }
-    });
+      await _fs.runTransaction((tx) async {
+        final doc = await tx.get(numaraRef);
+        if (doc.exists) {
+          final current = (doc.data()?['son_numara'] ?? 0) as int;
+          yeniNumara = current + 1;
+          tx.update(numaraRef, {'son_numara': yeniNumara});
+        } else {
+          tx.set(numaraRef, {'son_numara': 1});
+        }
+      });
 
-    final ref = _fs.collection('turnuva').doc();
-    await ref.set({
-      'numara': yeniNumara,
-      'sezonId': sezonId,
-      'turTarih': turTarih,
-      'turKazanan': null,
-      'turIkinci': null,
-      'turUcuncu': null,
-      'turKaybeden': null,
-      'tursonuc': 0,
-      'isLowestWins': isLowestWins,
-      'grupId': k.grupId,
-      'olusturma': FieldValue.serverTimestamp(),
-      'aktifMi': true,
-    });
-    return ref.id;
+      final ref = _fs.collection('turnuva').doc();
+      await ref.set({
+        'numara': yeniNumara,
+        'sezonId': sezonId,
+        'turTarih': turTarih,
+        'turKazanan': null,
+        'turIkinci': null,
+        'turUcuncu': null,
+        'turKaybeden': null,
+        'tursonuc': 0,
+        'isLowestWins': isLowestWins,
+        'grupId': k.grupId,
+        'olusturma': FieldValue.serverTimestamp(),
+        'aktifMi': true,
+      });
+
+      return ref.id;
+    } catch (e) {
+      if (kDebugMode) print("❌ Turnuva oluşturma hatası: $e");
+      rethrow; // Hatayı UI'a fırlat ki snackbar gösterebilsin
+    }
   }
 
   // ✅ TURNUVA SONLANDIRMA HAZIRLIK
@@ -110,215 +118,186 @@ class TurnuvaServisi {
     return {'toplamOyun': oyunSnap.docs.length, 'turnuvaData': doc.data()};
   }
 
-  // ✅✅ GÜNCELLENDİ: EN ÇOK KAZANANA GÖRE ŞAMPİYON BELİRLEME ✅✅
+  // ✅✅ GÜNCELLENDİ: AKTİF OYUN VARSA BİLE SONLANDIRABİLİR ✅✅
   Future<void> turnuvayiSonlandir(
     String turnuvaId,
     String sampiyonAd,
     String? sonuncuAd,
   ) async {
-    final k = await AuthService().profilGarantile();
-    final doc = await _fs.collection('turnuva').doc(turnuvaId).get();
+    try {
+      final k = await AuthService().profilGarantile();
+      final doc = await _fs.collection('turnuva').doc(turnuvaId).get();
 
-    if (!doc.exists || doc.data()?['grupId'] != k?.grupId) {
-      throw Exception('Bu turnuvayı sonlandırma yetkiniz yok.');
-    }
+      if (!doc.exists || doc.data()?['grupId'] != k?.grupId) {
+        throw Exception('Yetkisiz işlem.');
+      }
 
-    final grupId = k!.grupId!;
-    final batch = _fs.batch();
+      final grupId = k!.grupId!;
+      final batch = _fs.batch();
 
-    // 1. ADIM: Bu turnuvaya ait AÇIK oyunları bul ve varsa sonlandır
-    final acikOyunlarSnap = await _fs
-        .collection('oyunlar')
-        .where('turId', isEqualTo: turnuvaId)
-        .where('grupId', isEqualTo: grupId)
-        .where('oyunKazanan', isEqualTo: null)
-        .get();
-
-    for (var oDoc in acikOyunlarSnap.docs) {
-      final oyunData = oDoc.data();
-      final oyunId = oDoc.id;
-
-      // ⚠️ KRİTİK KOŞUL: En az 1 el girilmiş mi?
-      final ellerSnap = await _fs
-          .collection('eller')
-          .where('oyunId', isEqualTo: oyunId)
+      // 1. AÇIK OYUNLARI BUL VE SONLANDIR
+      final acikOyunlarSnap = await _fs
+          .collection('oyunlar')
+          .where('turId', isEqualTo: turnuvaId)
           .where('grupId', isEqualTo: grupId)
-          .limit(1)
+          .where('oyunKazanan', isEqualTo: null)
           .get();
 
-      if (ellerSnap.docs.isNotEmpty) {
-        // ✅ EL VARSA: Oyunu normal şekilde sonlandır
-        final tumEller = await _fs
+      for (var oDoc in acikOyunlarSnap.docs) {
+        final oyunData = oDoc.data();
+        final oyunId = oDoc.id;
+
+        // El var mı kontrol et
+        final ellerSnap = await _fs
             .collection('eller')
             .where('oyunId', isEqualTo: oyunId)
             .where('grupId', isEqualTo: grupId)
+            .limit(1)
             .get();
 
-        List<String> oyuncuIsimleri =
-            (oyunData['oyuncu'] as String?)
-                ?.split(', ')
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList() ??
-            [];
+        if (ellerSnap.docs.isNotEmpty) {
+          // EL VARSA: Skor hesapla ve kazananı bul
+          final tumEller = await _fs
+              .collection('eller')
+              .where('oyunId', isEqualTo: oyunId)
+              .where('grupId', isEqualTo: grupId)
+              .get();
 
-        List<String>? oyuncuUidListesi = (oyunData['oyuncuIds'] as List?)
-            ?.map((e) => e.toString())
-            .toList();
-
-        Map<String, String> uidToNameMap = {};
-        if (oyuncuUidListesi != null &&
-            oyuncuUidListesi.length == oyuncuIsimleri.length) {
-          for (int i = 0; i < oyuncuUidListesi.length; i++) {
-            uidToNameMap[oyuncuUidListesi[i]] = oyuncuIsimleri[i];
-          }
-        }
-
-        Map<String, int> puanlar = {};
-        for (var isim in oyuncuIsimleri) {
-          puanlar[isim] = 0;
-        }
-
-        bool isLowestWins =
-            oyunData['yuksekSkorKazanir'] == false ||
-            oyunData['yuksekSkorKazanir'] == 0;
-
-        for (var elDoc in tumEller.docs) {
-          final elData = elDoc.data();
-          final skorlar = elData['skorlar'] as Map?;
-          final gostergeler = elData['gostergeler'] as Map?;
-          final tekGosterge = elData['gosterge'];
-
-          if (skorlar is Map) {
-            skorlar.forEach((uidKey, skorVal) {
-              final uidStr = uidKey.toString();
-              final s = (skorVal is num)
-                  ? skorVal.toInt()
-                  : (int.tryParse(skorVal.toString()) ?? 0);
-
-              int g = 0;
-              if (gostergeler is Map && gostergeler[uidKey] != null) {
-                final gv = gostergeler[uidKey];
-                g = (gv is num)
-                    ? gv.toInt()
-                    : (int.tryParse(gv.toString()) ?? 0);
-              } else if (tekGosterge is num) {
-                g = tekGosterge.toInt();
-              }
-
-              String hedefIsim = uidToNameMap[uidStr] ?? uidStr;
-              if (puanlar.containsKey(hedefIsim)) {
-                puanlar[hedefIsim] = (puanlar[hedefIsim] ?? 0) + s + g;
-              }
-            });
-          }
-        }
-
-        var sirali = puanlar.entries.toList();
-        sirali.sort(
-          (a, b) => isLowestWins
-              ? a.value.compareTo(b.value)
-              : b.value.compareTo(a.value),
-        );
-
-        String kazanan = sirali.isNotEmpty ? sirali.first.key : '';
-        String kaybeden = sirali.length > 1 ? sirali.last.key : '';
-
-        String? kazananUid = uidToNameMap.entries
-            .firstWhere(
-              (e) => e.value == kazanan,
-              orElse: () => MapEntry('', ''),
-            )
-            .key;
-        String? kaybedenUid = uidToNameMap.entries
-            .firstWhere(
-              (e) => e.value == kaybeden,
-              orElse: () => MapEntry('', ''),
-            )
-            .key;
-
-        batch.update(oDoc.reference, {
-          'oyunKazanan': kazanan,
-          'oyunKaybeden': kaybeden,
-          'oyunKazananUid': kazananUid,
-          'oyunKaybedenUid': kaybedenUid,
-          'bitisTarihi': FieldValue.serverTimestamp(),
-          'aktifMi': false,
-        });
-      } else {
-        // ❌ EL YOKSA: Sadece pasife al
-        batch.update(oDoc.reference, {
-          'aktifMi': false,
-          'bitisTarihi': FieldValue.serverTimestamp(),
-        });
-      }
-    }
-
-    // 2. ADIM: Tüm oyunları (bitmiş olanlar dahil) tarayıp şampiyonu belirle
-    final tumOyunlarSnap = await _fs
-        .collection('oyunlar')
-        .where('turId', isEqualTo: turnuvaId)
-        .where('grupId', isEqualTo: grupId)
-        .get();
-
-    Map<String, int> kazanmaSayisi = {};
-    Map<String, String> uidToNameMapGlobal = {};
-
-    for (var oDoc in tumOyunlarSnap.docs) {
-      final data = oDoc.data();
-      final kazananUid = data['oyunKazananUid']?.toString();
-
-      if (kazananUid != null && kazananUid.isNotEmpty) {
-        kazanmaSayisi[kazananUid] = (kazanmaSayisi[kazananUid] ?? 0) + 1;
-
-        // İsim haritasını güncelle (oyuncu listesinde olabilir)
-        final oyuncuListesi = data['oyuncu'] as String?;
-        final uidListesi = (data['oyuncuIds'] as List?)
-            ?.map((e) => e.toString())
-            .toList();
-
-        if (oyuncuListesi != null && uidListesi != null) {
-          final isimler = oyuncuListesi
-              .split(', ')
-              .map((e) => e.trim())
+          List<String> oyuncuIsimleri =
+              (oyunData['oyuncu'] as String?)
+                  ?.split(', ')
+                  .map((e) => e.trim())
+                  .where((e) => e.isNotEmpty)
+                  .toList() ??
+              [];
+          List<String>? oyuncuUidListesi = (oyunData['oyuncuIds'] as List?)
+              ?.map((e) => e.toString())
               .toList();
-          for (int i = 0; i < uidListesi.length && i < isimler.length; i++) {
-            if (uidListesi[i] == kazananUid) {
-              uidToNameMapGlobal[kazananUid] = isimler[i];
+
+          Map<String, String> uidToNameMap = {};
+          if (oyuncuUidListesi != null &&
+              oyuncuUidListesi.length == oyuncuIsimleri.length) {
+            for (int i = 0; i < oyuncuUidListesi.length; i++) {
+              uidToNameMap[oyuncuUidListesi[i]] = oyuncuIsimleri[i];
             }
           }
+
+          Map<String, int> puanlar = {};
+          for (var isim in oyuncuIsimleri) {
+            puanlar[isim] = 0;
+          }
+
+          bool isLowestWins =
+              oyunData['yuksekSkorKazanir'] == false ||
+              oyunData['yuksekSkorKazanir'] == 0;
+
+          for (var elDoc in tumEller.docs) {
+            final elData = elDoc.data();
+            final skorlar = elData['skorlar'] as Map?;
+            if (skorlar is Map) {
+              skorlar.forEach((uidKey, skorVal) {
+                final s = (skorVal is num)
+                    ? skorVal.toInt()
+                    : (int.tryParse(skorVal.toString()) ?? 0);
+                String hedefIsim =
+                    uidToNameMap[uidKey.toString()] ?? uidKey.toString();
+                if (puanlar.containsKey(hedefIsim)) {
+                  puanlar[hedefIsim] = (puanlar[hedefIsim] ?? 0) + s;
+                }
+              });
+            }
+          }
+
+          var sirali = puanlar.entries.toList();
+          sirali.sort(
+            (a, b) => isLowestWins
+                ? a.value.compareTo(b.value)
+                : b.value.compareTo(a.value),
+          );
+
+          String kazanan = sirali.isNotEmpty ? sirali.first.key : '';
+          String kaybeden = sirali.length > 1 ? sirali.last.key : '';
+
+          String? kazananUid = uidToNameMap.entries
+              .firstWhere(
+                (e) => e.value == kazanan,
+                orElse: () => MapEntry('', ''),
+              )
+              .key;
+          String? kaybedenUid = uidToNameMap.entries
+              .firstWhere(
+                (e) => e.value == kaybeden,
+                orElse: () => MapEntry('', ''),
+              )
+              .key;
+
+          batch.update(oDoc.reference, {
+            'oyunKazanan': kazanan,
+            'oyunKaybeden': kaybeden,
+            'oyunKazananUid': kazananUid,
+            'oyunKaybedenUid': kaybedenUid,
+            'bitisTarihi': FieldValue.serverTimestamp(),
+            'aktifMi': false,
+          });
+        } else {
+          // EL YOKSA: Sadece kapat
+          batch.update(oDoc.reference, {
+            'aktifMi': false,
+            'bitisTarihi': FieldValue.serverTimestamp(),
+          });
         }
       }
-    }
 
-    // En çok kazananı bul
-    String enCokKazananUid = '';
-    int maxKazanma = 0;
+      // 2. ŞAMPİYONU BELİRLE (En çok oyunu kazanan)
+      final tumOyunlarSnap = await _fs
+          .collection('oyunlar')
+          .where('turId', isEqualTo: turnuvaId)
+          .where('grupId', isEqualTo: grupId)
+          .get();
+      Map<String, int> kazanmaSayisi = {};
+      Map<String, String> uidToNameGlobal = {};
 
-    kazanmaSayisi.forEach((uid, adet) {
-      // ✅ 'count' yerine 'adet' kullanıldı
-      if (adet > maxKazanma) {
-        maxKazanma = adet;
-        enCokKazananUid = uid;
+      for (var oDoc in tumOyunlarSnap.docs) {
+        final data = oDoc.data();
+        final kUid = data['oyunKazananUid']?.toString();
+        if (kUid != null && kUid.isNotEmpty) {
+          kazanmaSayisi[kUid] = (kazanmaSayisi[kUid] ?? 0) + 1;
+          // İsim eşleşmesi
+          final oList = (data['oyuncu'] as String?)?.split(', ') ?? [];
+          final uList =
+              (data['oyuncuIds'] as List?)?.map((e) => e.toString()).toList() ??
+              [];
+          for (int i = 0; i < uList.length && i < oList.length; i++) {
+            if (uList[i] == kUid) uidToNameGlobal[kUid] = oList[i];
+          }
+        }
       }
-    });
 
-    // Eğer hiç oyun kazanılmadıysa veya veri yoksa parametredeki ismi kullan
-    String finalSampiyon = uidToNameMapGlobal[enCokKazananUid] ?? sampiyonAd;
+      String enCokKazananUid = '';
+      int maxWin = 0;
+      kazanmaSayisi.forEach((uid, adet) {
+        if (adet > maxWin) {
+          maxWin = adet;
+          enCokKazananUid = uid;
+        }
+      });
 
-    // Kaybedeni belirlemek için (en az kazanan veya parametre)
-    String finalKaybeden = sonuncuAd ?? '-';
+      String finalSampiyon = uidToNameGlobal[enCokKazananUid] ?? sampiyonAd;
 
-    // 3. ADIM: Turnuvayı Güncelle
-    batch.update(_fs.collection('turnuva').doc(turnuvaId), {
-      'turKazanan': finalSampiyon,
-      'turKaybeden': finalKaybeden,
-      'tursonuc': 1,
-      'bitisTarihi': FieldValue.serverTimestamp(),
-      'aktifMi': false,
-    });
+      // 3. TURNUVAYI KAPAT
+      batch.update(_fs.collection('turnuva').doc(turnuvaId), {
+        'turKazanan': finalSampiyon,
+        'turKaybeden': sonuncuAd ?? '-',
+        'tursonuc': 1,
+        'bitisTarihi': FieldValue.serverTimestamp(),
+        'aktifMi': false,
+      });
 
-    await batch.commit();
+      await batch.commit();
+    } catch (e) {
+      if (kDebugMode) print("❌ Turnuva sonlandırma hatası: $e");
+      rethrow;
+    }
   }
 
   // ✅ ZİNCİRLEME SİLME

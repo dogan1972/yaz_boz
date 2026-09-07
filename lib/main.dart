@@ -13,7 +13,7 @@ import 'package:yaz_boz/pages/sezon/sezonlar_sayfasi.dart';
 import 'package:yaz_boz/pages/turnuva/turnuva_sayfasi.dart';
 import 'package:yaz_boz/pages/arkadas/arkadas_sayfasi.dart';
 import 'package:yaz_boz/pages/profil/profil_sayfasi.dart';
-import 'package:yaz_boz/pages/cagri/cagri_panosu_wrapper.dart';
+import 'package:yaz_boz/pages/cagri/cagri_panosu.dart';
 import 'package:yaz_boz/widgets/app_widgets.dart';
 import 'package:yaz_boz/theme/app_theme.dart';
 

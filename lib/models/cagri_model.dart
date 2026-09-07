@@ -7,15 +7,18 @@ class Cagri {
   final String acanId;
   final String acanAd;
   final String durum;
-  final int hedef;
+
+  // ✅ YENİ: davetliIds artık ÇAĞIRICI DAHİL TÜM KATILIMCILARI içerir
   final List<String> davetliIds;
 
-  // ✅ SAAT KALACAK + TARİH EKLENECEK
   final String? saat;
-  final String? tarih; // YENİ
+  final String? tarih;
   final String? yer;
   final String? konumAd;
+
+  // ✅ onaylar listesi de çağrıcı dahil, otomatik onaylı başlar
   final List<String> onaylar;
+
   final Timestamp? olusturma;
 
   const Cagri({
@@ -23,7 +26,6 @@ class Cagri {
     required this.acanId,
     required this.acanAd,
     required this.durum,
-    required this.hedef,
     required this.davetliIds,
     this.saat,
     this.tarih,
@@ -33,7 +35,9 @@ class Cagri {
     this.olusturma,
   });
 
-  // ✅ Otomatik adlandırma için tarih getter'ı
+  // ✅ HEDEF: Artık ayrı alan değil, davetliIds.length'den hesaplanır
+  int get hedef => davetliIds.length;
+
   String get adlandirmaTarihi {
     if (tarih != null && tarih!.isNotEmpty) return tarih!;
     if (olusturma != null) {
@@ -45,15 +49,15 @@ class Cagri {
   bool get acik => durum == 'acik';
   bool get kilitli => durum == 'onaylandi';
 
-  // ✅ detayDolu: saat VEYA tarih doluysa true
   bool get detayDolu =>
       (saat != null && saat!.isNotEmpty ||
           tarih != null && tarih!.isNotEmpty) &&
       yer != null &&
       yer!.isNotEmpty;
 
-  bool get herkesOnayladi =>
-      davetliIds.isNotEmpty && davetliIds.every((d) => onaylar.contains(d));
+  // ✅ SIFIR MATEMATİK: Direkt length
+  int get onaySayisi => onaylar.length;
+  bool get herkesOnayladi => onaylar.length >= 4 || onaylar.length >= hedef;
 
   factory Cagri.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>? ?? {};
@@ -65,10 +69,9 @@ class Cagri {
       acanId: d['acanId']?.toString() ?? '',
       acanAd: d['acanAd']?.toString() ?? '',
       durum: d['durum']?.toString() ?? 'acik',
-      hedef: (d['hedef'] as num?)?.toInt() ?? 4,
       davetliIds: liste(d['davetliIds']),
-      saat: d['saat']?.toString(), // ✅ KALDI
-      tarih: d['tarih']?.toString(), // ✅ EKLENDİ
+      saat: d['saat']?.toString(),
+      tarih: d['tarih']?.toString(),
       yer: d['yer']?.toString(),
       konumAd: d['konumAd']?.toString(),
       onaylar: liste(d['onaylar']),
@@ -80,10 +83,9 @@ class Cagri {
     'acanId': acanId,
     'acanAd': acanAd,
     'durum': durum,
-    'hedef': hedef,
     'davetliIds': davetliIds,
-    'saat': saat, // ✅ KALDI
-    'tarih': tarih, // ✅ EKLENDİ
+    'saat': saat,
+    'tarih': tarih,
     'yer': yer,
     'konumAd': konumAd,
     'onaylar': onaylar,

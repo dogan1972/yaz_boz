@@ -1,3 +1,5 @@
+// lib/theme/app_theme.dart
+
 import 'package:flutter/material.dart';
 
 // 🎨 RENK PALETİ (Amber/Cyan Night Palette)
@@ -24,6 +26,19 @@ class AppColors {
   // Kenarlıklar ve Ayırıcılar
   static const Color border = Color(0xFF1E293B);
   static const Color divider = Color(0xFF334155);
+
+  // ✅ ÇAĞRI PANOSU ÖZEL RENKLERİ (Buraya taşındı)
+  static const Color panoBgGradientStart = Color(0xFF1565C0);
+  static const Color panoBgGradientEnd = Color(0xFF0B2A5B);
+  static const Color panoTextPrimary = Colors.white;
+  static const Color panoTextSecondary = Colors.white70;
+  static const Color panoAccentGreen = Color(0xFF22C55E);
+  static const Color panoAccentAmber = Color(0xFFF59E0B);
+  static const Color panoAccentBlue = Color.fromARGB(15, 5, 1, 255);
+  static const Color panoAccentBlueFixed = Color(0xFF3DD3FC);
+  static const Color panoBorderTop = Color(
+    0xFFFFFFFF,
+  );
 }
 
 // 📝 METİN STİLLERİ
@@ -52,7 +67,7 @@ class AppTextStyles {
   );
 }
 
-// 🎭 TEMA TANIMI
+//  TEMA TANIMI
 final ThemeData appTheme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.dark,

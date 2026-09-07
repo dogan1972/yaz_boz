@@ -9,7 +9,7 @@ import 'package:yaz_boz/pages/oyunlar/oyunlar_sayfasi.dart';
 import 'package:yaz_boz/pages/eller/yazboz_tahtasi.dart';
 import 'package:yaz_boz/pages/eller/el_giris_formu.dart';
 import 'package:yaz_boz/pages/eller/elleri_bitir.dart';
-import 'package:yaz_boz/models/el_model.dart';
+import 'package:yaz_boz/models/eller_sayfasi_model.dart';
 import 'package:yaz_boz/pages/eller/eller_widgets.dart';
 import 'package:yaz_boz/theme/app_theme.dart';
 

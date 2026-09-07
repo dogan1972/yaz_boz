@@ -35,7 +35,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       yeniListe,
     ) {
       if (!mounted) return;
-      // ✅ AKTİF Mİ ALANI DA EŞİTLİK KONTROLÜNE EKLENDİ
       if (yeniListe.length != _tumTurnuvalar.length ||
           !_listelerEsitMi(yeniListe, _tumTurnuvalar)) {
         setState(() {
@@ -48,7 +47,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
     });
   }
 
-  // ✅ AKTİF Mİ ALANI KARŞILAŞTIRMAYA DAHİL EDİLDİ
   bool _listelerEsitMi(List<Turnuva> a, List<Turnuva> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
@@ -58,7 +56,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
           a[i].turKazanan != b[i].turKazanan ||
           a[i].tursonuc != b[i].tursonuc ||
           a[i].aktifMi != b[i].aktifMi) {
-        // ✅ YENİ
         return false;
       }
     }
@@ -88,8 +85,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
   Future<void> _turnuvayiSonlandir(Turnuva tekTurnuva) async {
     try {
       if (!mounted) return;
-
-      // ✅ 1. ADIM: Oyun sayısını ve durumunu kontrol et
       final k = await AuthService().profilGarantile();
       if (k == null || k.grupId == null) return;
 
@@ -101,25 +96,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
 
       if (!mounted) return;
 
-      // Aktif (bitmemiş) oyun varsa engelle
-      final aktifOyun = oyunlarSnap.docs
-          .where((d) => (d.data())['oyunKazanan'] == null)
-          .length;
-
-      if (aktifOyun > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "⚠️ Bu turnuvada hâlâ devam eden $aktifOyun aktif oyun var — önce onları sonlandırın.",
-            ),
-            backgroundColor: Colors.orangeAccent,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        return;
-      }
-
-      // ✅ BOŞ TURNUVA UYARISI
+      // Boş turnuva uyarısı
       if (oyunlarSnap.docs.isEmpty) {
         final bosOnay = await showDialog<bool>(
           context: context,
@@ -163,63 +140,65 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
         if (bosOnay != true || !mounted) return;
       }
 
-      // ✅ 2. ADIM: Şampiyon ve Sonuncu Hesaplama
-      String sampiyon = '';
+      String sampiyon = '-';
       String? sonuncu;
 
       if (oyunlarSnap.docs.isNotEmpty) {
         Map<String, int> galibiyetler = {};
+        Map<String, int> maglubiyetler = {}; // ✅ MAĞLUBİYET SAYACI
         Set<String> oyuncular = {};
 
-        // 1. GEÇİŞ: Tüm oyuncuları topla
+        // 1. Tüm oyuncuları topla ve sayaçları sıfırla
         for (var doc in oyunlarSnap.docs) {
           final data = doc.data();
           if (data['oyuncu'] != null) {
             for (var s in data['oyuncu'].toString().split(RegExp(r'[,\n]'))) {
               final o = s.trim();
-              if (o.isNotEmpty) oyuncular.add(o);
+              if (o.isNotEmpty) {
+                oyuncular.add(o);
+                galibiyetler[o] = 0;
+                maglubiyetler[o] = 0; // ✅ Herkes 0 mağlubiyetle başlar
+              }
             }
           }
         }
 
-        // Herkesi 0 galibiyetle başlat
-        for (final o in oyuncular) {
-          galibiyetler[o] = 0;
-        }
-
-        // 2. GEÇİŞ: Galibiyetleri say
+        // 2. Galibiyet ve Mağlubiyetleri say
         for (var doc in oyunlarSnap.docs) {
           final data = doc.data();
-          final kaybeden = data['oyunKaybeden'];
+          final kazanan = data['oyunKazanan']?.toString();
+          final kaybeden = data['oyunKaybeden']?.toString();
 
-          if (kaybeden != null && kaybeden.toString().isNotEmpty) {
-            final kAdi = kaybeden.toString();
-            for (var oyuncu in oyuncular) {
-              if (oyuncu != kAdi) {
-                galibiyetler[oyuncu] = (galibiyetler[oyuncu] ?? 0) + 1;
-              }
-            }
+          // ✅ Galibiyet say
+          if (kazanan != null && kazanan.isNotEmpty) {
+            galibiyetler[kazanan] = (galibiyetler[kazanan] ?? 0) + 1;
+          }
+
+          // ✅ Mağlubiyet say
+          if (kaybeden != null && kaybeden.isNotEmpty) {
+            maglubiyetler[kaybeden] = (maglubiyetler[kaybeden] ?? 0) + 1;
           }
         }
 
         // ✅ ŞAMPİYON: En çok galibiyeti alan
         var sirali = galibiyetler.entries.toList();
         sirali.sort((a, b) => b.value.compareTo(a.value));
-        sampiyon = sirali.isNotEmpty ? sirali.first.key : '';
+        sampiyon = sirali.isNotEmpty ? sirali.first.key : '-';
 
-        // ✅ SONUNCU: En az galibiyeti alan
-        var sonSirali = galibiyetler.entries.toList()
-          ..sort((a, b) => a.value.compareTo(b.value));
+        // ✅ SONUNCU: En çok MAĞLUBİYETİ alan (En az galibiyet DEĞİL!)
+        var sonSirali = maglubiyetler.entries.toList();
+        sonSirali.sort(
+          (a, b) => b.value.compareTo(a.value),
+        ); // Azalan sıra → en çok kaybeden ilk
         sonuncu = sonSirali.isNotEmpty ? sonSirali.first.key : null;
 
+        // Şampiyon ve sonuncu aynı kişi ise sonuncuyu null yap
         if (sampiyon == sonuncu) sonuncu = null;
-      } else {
-        sampiyon = '-';
       }
 
       if (!mounted) return;
 
-      // ✅ 3. ADIM: Onay Dialogu
+      // Onay Dialogu
       final onay = await showDialog<bool>(
         context: context,
         builder: (d) => StatefulBuilder(
@@ -309,7 +288,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       );
       if (onay != true || !mounted || sampiyon.trim().isEmpty) return;
 
-      // ✅ 4. ADIM: İşlemi tamamla
+      // İşlemi tamamla
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -323,7 +302,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       );
 
       if (!mounted) return;
-      Navigator.pop(context);
+      if (Navigator.canPop(context)) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -541,6 +520,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
     );
   }
 
+  // ✅ TEK VE TEMİZ _aktifHeroGorunumu METODU
   Widget _aktifHeroGorunumu(Turnuva tekTurnuva) {
     final double h = MediaQuery.of(context).size.height;
     return Padding(
@@ -793,6 +773,7 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
@@ -803,7 +784,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
       );
     }
 
-    // ✅ FİLTRELEME MANTIĞI AKTİF Mİ ALANINA GÖRE GÜNCELLENDİ
     final gosterilecekListe = _tumTurnuvalar
         .where(
           (t) => _gosterArsiv
@@ -898,7 +878,6 @@ class _TurnuvaSayfasiState extends State<TurnuvaSayfasi> {
               );
               return;
             }
-            // ✅ AKTİF TURNUVA KONTROLÜ AKTİF Mİ ALANINA GÖRE YAPILIYOR
             final buGruptaAktifTurnuvaVar = _tumTurnuvalar.any(
               (t) => t.aktifMi && t.turKazanan == null,
             );

@@ -1,10 +1,168 @@
-// lib/widgets/cagri_panosu_widgets.dart
-import 'dart:math';
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+// lib/widgets/cagri_panosu.dart
 
-/// Sol Taraf Metin ve İkon Bileşeni
+import 'dart:async';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:yaz_boz/services/cagri_servisi.dart';
+import 'package:yaz_boz/services/auth_service.dart';
+import 'package:yaz_boz/pages/salon/salon_sayfasi.dart';
+import 'package:yaz_boz/pages/cagri/cagri_dialog.dart';
+import 'package:yaz_boz/theme/app_theme.dart';
+
+// ============================================================
+// 1. WRAPPER SINIFI (Stream Yönetimi)
+// ============================================================
+
+class CagriPanoWrapper extends StatefulWidget {
+  const CagriPanoWrapper({super.key});
+
+  @override
+  State<CagriPanoWrapper> createState() => _CagriPanoWrapperState();
+}
+
+class _CagriPanoWrapperState extends State<CagriPanoWrapper> {
+  String? _uid;
+  Stream<PanoVerisi>? _stream;
+  Timer? _gecikme;
+  bool _oncekiKilit = false;
+  StreamSubscription<PanoVerisi>? _panoSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _uid = AuthService().uid;
+    _baslat();
+  }
+
+  void _baslat() {
+    _gecikme = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted || _uid == null) return;
+      _panoSub?.cancel();
+      setState(() {
+        _stream = CagriServisi().panoStreami(_uid!);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _gecikme?.cancel();
+    _panoSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = _uid;
+    if (uid == null) return const SizedBox.shrink();
+
+    if (_stream == null) return _placeholder(context, uid);
+
+    return StreamBuilder<PanoVerisi>(
+      stream: _stream,
+      builder: (context, snap) {
+        if (!context.mounted) return const SizedBox.shrink();
+        final v = snap.data ?? PanoVerisi.bos();
+
+        if (v.kilitli && !_oncekiKilit) {
+          _oncekiKilit = true;
+        } else if (!v.kilitli) {
+          _oncekiKilit = false;
+        }
+
+        return _CagriSeridi(v: v, uid: uid);
+      },
+    );
+  }
+
+  Widget _placeholder(BuildContext context, String uid) {
+    return panoSeritKabuk(
+      onTap: () => cagriAcDialogu(context, uid),
+      sol: panoSolMetin(
+        etiket: 'ÇAĞRI YOK',
+        metin: 'Oyuna çağır',
+        renk: AppColors.textPrimary.withValues(alpha: 0.7),
+        ikon: Icons.add_circle_outline,
+      ),
+      ray: const PanoStatikRay(
+        onay: 0,
+        kilitli: false,
+        benAcan: false,
+        hedef: 0,
+        aktif: false, // ✅ EKLENDİ
+      ),
+    );
+  }
+}
+
+// ============================================================
+// 2. SERİT GÖRÜNÜMÜ (Durum Metni ve Ray Bağlantısı)
+// ============================================================
+
+class _CagriSeridi extends StatelessWidget {
+  final PanoVerisi v;
+  final String uid;
+  const _CagriSeridi({required this.v, required this.uid});
+
+  void _tap(BuildContext context) {
+    if (v.aktif && v.cagriId != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SalonSayfasi(cagriId: v.cagriId!, uid: uid),
+        ),
+      );
+    } else {
+      cagriAcDialogu(context, uid);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String etiket, metin;
+    Color renk;
+    IconData ikon;
+
+    if (!v.aktif) {
+      etiket = 'ÇAĞRI YOK';
+      metin = 'Oyuna çağır';
+      renk = AppColors.textPrimary.withValues(alpha: 0.7);
+      ikon = Icons.add_circle_outline;
+    } else if (v.kilitli) {
+      etiket = 'SABİT';
+      metin = 'Buluşma onaylandı';
+      renk = AppColors.accentGreen.withValues(alpha: 0.9);
+      ikon = Icons.verified_user_rounded;
+    } else if (v.benAcan) {
+      etiket = 'MASA';
+      metin = v.onaySayisi > 0 ? '${v.onaySayisi} onay geldi…' : 'kuruluyor…';
+      renk = AppColors.accentAmber;
+      ikon = Icons.table_restaurant;
+    } else {
+      etiket = 'ÇAĞRI';
+      metin = '${v.acanAd ?? 'Biri'} çağırdı';
+      renk = AppColors.accentCyan;
+      ikon = Icons.notifications_active_rounded;
+    }
+
+    return panoSeritKabuk(
+      onTap: () => _tap(context),
+      sol: panoSolMetin(etiket: etiket, metin: metin, renk: renk, ikon: ikon),
+      ray: PanoStatikRay(
+        onay: v.onaySayisi,
+        kilitli: v.kilitli,
+        benAcan: v.benAcan,
+        hedef: v.hedef,
+        aktif: v.aktif, // ✅ EKLENDİ
+      ),
+    );
+  }
+}
+
+// ============================================================
+// 3. YARDIMCI WIDGET'LAR (Metin, Kabuk ve Animasyonlu Ray)
+// ============================================================
+
 Widget panoSolMetin({
   required String etiket,
   required String metin,
@@ -51,7 +209,6 @@ Widget panoSolMetin({
   );
 }
 
-/// Ortak Serit Kabuğu
 Widget panoSeritKabuk({
   required VoidCallback onTap,
   required Widget sol,
@@ -100,18 +257,16 @@ Widget panoSeritKabuk({
   );
 }
 
-/// Statik Ray - 4 Adımlı Onay Göstergesi
 class PanoStatikRay extends StatefulWidget {
-  final int onay;
-  final bool kilitli;
-  final bool benAcan;
-  final int hedef;
+  final int onay, hedef;
+  final bool kilitli, benAcan, aktif; // ✅ aktif eklendi
   const PanoStatikRay({
     super.key,
     required this.onay,
     required this.kilitli,
     required this.benAcan,
     required this.hedef,
+    required this.aktif, // ✅ zorunlu parametre
   });
 
   @override
@@ -122,10 +277,6 @@ class _PanoStatikRayState extends State<PanoStatikRay>
     with SingleTickerProviderStateMixin {
   AnimationController? _nabiz;
   Timer? _nabizGecikme;
-
-  int get onay => widget.onay;
-  bool get kilitli => widget.kilitli;
-  int get hedef => widget.hedef;
 
   static const _kirmizi = Color(0xFFEF4444);
   static const _sari = AppColors.accentAmber;
@@ -153,19 +304,17 @@ class _PanoStatikRayState extends State<PanoStatikRay>
   }
 
   Color _renk(int i) {
-    if (i == 0) return _yesil;
-    if (kilitli) return _yesil;
-    if (i <= onay) return _yesil;
-    if (i <= hedef) return _sari;
+    // ✅ Aktif değilse renkleri sönük/gri yap
+    if (!widget.aktif) return AppColors.textPrimary.withValues(alpha: 0.3);
+
+    if (widget.kilitli) return _yesil;
+    if (i < widget.onay) return _yesil;
+    if (i < widget.hedef) return _sari;
     return _kirmizi;
   }
 
-  bool _nabizAktif(int i) {
-    if (i == 0) return true;
-    if (kilitli) return true;
-    if (i <= hedef) return true;
-    return false;
-  }
+  bool _nabizAktif(int i) =>
+      !widget.kilitli && i < widget.hedef && widget.aktif;
 
   double _pulse(int i, double t) => 0.5 + 0.5 * sin(2 * pi * t - i * 0.9);
 
@@ -191,10 +340,13 @@ class _PanoStatikRayState extends State<PanoStatikRay>
   }
 
   Widget _parca(int i) {
-    final dolu = kilitli || (i - 1) < onay;
-    final renk = kilitli
-        ? _yesil
-        : (dolu ? _sari : AppColors.textPrimary.withValues(alpha: 0.24));
+    // ✅ DÜZELTME: aktif değilse parçalar da sönük olmalı
+    final dolu = widget.aktif && (widget.kilitli || (i <= widget.onay));
+    final renk = !widget.aktif
+        ? AppColors.textPrimary.withValues(alpha: 0.24)
+        : (widget.kilitli
+              ? _yesil
+              : (dolu ? _sari : AppColors.textPrimary.withValues(alpha: 0.24)));
     return Expanded(
       child: Container(
         height: 3,
@@ -209,16 +361,16 @@ class _PanoStatikRayState extends State<PanoStatikRay>
   Widget _node(int i, double pulse) {
     final renk = _renk(i);
     final aktif = _nabizAktif(i);
-    final dolu = kilitli || (i == 0) || (i <= onay);
 
-    const double butonDolu = 34.0;
-    const double butonBos = 28.0;
+    // ✅ KRİTİK DÜZELTME: Tik sadece aktifse VEYA kilitliyse görünür
+    final dolu = widget.aktif && (widget.kilitli || (i < widget.onay));
+
+    const double butonDolu = 34.0,
+        butonBos = 28.0,
+        haloDolu = 50.0,
+        haloBos = 42.0;
     final double buton = dolu ? butonDolu : butonBos;
-
-    const double haloDolu = 50.0;
-    const double haloBos = 42.0;
     final double haloTemel = dolu ? haloDolu : haloBos;
-
     final double p = aktif ? pulse : 0.0;
     final double haloOpacity = aktif ? (0.16 + 0.20 * p) : 0.10;
     final double haloScale = aktif ? (0.90 + 0.20 * p) : 1.0;

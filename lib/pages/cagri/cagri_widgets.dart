@@ -7,7 +7,6 @@ import 'package:yaz_boz/pages/salon/salon_sayfasi.dart';
 import 'package:yaz_boz/services/cagri_servisi.dart';
 import 'package:yaz_boz/theme/app_theme.dart';
 
-/// Durum Bilgisi Sınıfı
 class CagriDurumBilgisi {
   final String etiket;
   final Color renk;
@@ -15,12 +14,10 @@ class CagriDurumBilgisi {
   const CagriDurumBilgisi(this.etiket, this.renk, this.ikon);
 }
 
-/// Çağrı Kartı Bileşeni - DÜZELTİLMİŞ SAYIM MANTIĞI
 class CagriKarti extends StatelessWidget {
   final Cagri cagri;
   final String uid;
   const CagriKarti({super.key, required this.cagri, required this.uid});
-
   bool get _benAcan => cagri.acanId == uid;
 
   CagriDurumBilgisi get _durum {
@@ -54,11 +51,8 @@ class CagriKarti extends StatelessWidget {
 
   Future<void> _konumuAc(BuildContext context) async {
     String? aramaMetni = cagri.konumAd;
-    if (aramaMetni == null || aramaMetni.isEmpty) {
-      aramaMetni = cagri.yer;
-    }
+    if (aramaMetni == null || aramaMetni.isEmpty) aramaMetni = cagri.yer;
     if (aramaMetni == null || aramaMetni.isEmpty) return;
-
     Uri uri;
     if (aramaMetni.startsWith('http://') || aramaMetni.startsWith('https://')) {
       uri = Uri.parse(aramaMetni);
@@ -67,7 +61,6 @@ class CagriKarti extends StatelessWidget {
         'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(aramaMetni)}',
       );
     }
-
     try {
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         if (context.mounted) {
@@ -112,7 +105,6 @@ class CagriKarti extends StatelessWidget {
         ],
       ),
     );
-
     if (onay == true && context.mounted) {
       try {
         await CagriServisi().cagriIptalEt(cagri.id);
@@ -141,20 +133,9 @@ class CagriKarti extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = _durum;
 
-    // ✅ KRİTİK DÜZELTME: Sayım Mantığı
-    // cagri.hedef: Davetli sayısı (Örn: 3)
-    // Toplam Katılımcı: Davetli + Çağrıcı (3 + 1 = 4)
-    final toplamKatilimci = cagri.hedef + 1;
-
-    // Onay Sayısı Hesaplama:
-    // PanoVerisi.cagri içindeki mantıkla uyumlu olması için:
-    // Eğer çağrıcı (acanId) onaylar listesinde YOKSA, listedeki sayıya +1 ekleriz.
-    // Eğer VARSA (bazen sistem ekleyebilir), direkt liste uzunluğunu alırız.
-    int onaySayisi = cagri.onaylar.length;
-    if (!cagri.onaylar.contains(cagri.acanId)) {
-      onaySayisi += 1;
-    }
-
+    // ✅ SIFIR MATEMATİK: Modeldeki getter'ları direkt kullan
+    final toplamKatilimci = cagri.hedef; // davetliIds.length
+    final onaySayisi = cagri.onaySayisi; // onaylar.length
     final aktif = cagri.acik || cagri.kilitli;
 
     return Padding(
@@ -182,7 +163,6 @@ class CagriKarti extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- 1. SATIR: DURUM + AÇAN KİŞİ + ONAY SAYISI ---
                 Row(
                   children: [
                     Icon(d.ikon, color: d.renk, size: 18),
@@ -207,7 +187,6 @@ class CagriKarti extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // ✅ DÜZELTİLDİ: Artık her zaman (Onay / ToplamKatılımcı) formatında
                     Text(
                       '$onaySayisi/$toplamKatilimci',
                       style: TextStyle(
@@ -220,10 +199,7 @@ class CagriKarti extends StatelessWidget {
                     const Text('onay', style: AppTextStyles.bodySecondary),
                   ],
                 ),
-
                 const SizedBox(height: 8),
-
-                // --- 2. SATIR: TARİH VE SAAT ---
                 Row(
                   children: [
                     if (cagri.tarih != null && cagri.tarih!.isNotEmpty) ...[
@@ -274,10 +250,7 @@ class CagriKarti extends StatelessWidget {
                     ],
                   ],
                 ),
-
                 const SizedBox(height: 8),
-
-                // --- 3. SATIR: MEKAN + AKSİYONLAR ---
                 Row(
                   children: [
                     Icon(Icons.place, color: AppColors.accentBlue, size: 14),
@@ -334,58 +307,51 @@ class CagriKarti extends StatelessWidget {
   }
 }
 
-/// Boş Durum Ekranı
 class CagriBosDurumEkrani extends StatelessWidget {
   final String? uid;
   const CagriBosDurumEkrani({super.key, required this.uid});
-
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.table_restaurant_rounded,
-              size: 64,
-              color: AppColors.accentAmber.withValues(alpha: 0.3),
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.table_restaurant_rounded,
+            size: 64,
+            color: AppColors.accentAmber.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'MASA BOŞ',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              letterSpacing: 2,
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'MASA BOŞ',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-                letterSpacing: 2,
-              ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Son 24 saatte çağrı yok.\nYeni bir masa kur veya arkadaşını bekle.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.divider, fontSize: 13),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: () => cagriAcDialogu(context, uid!),
+            icon: const Icon(Icons.add_circle_outline),
+            label: const Text('ÇAĞRI AÇ'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentAmber,
+              foregroundColor: AppColors.bgPrimary,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Son 24 saatte çağrı yok.\nYeni bir masa kur veya arkadaşını bekle.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.divider, fontSize: 13),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => cagriAcDialogu(context, uid!),
-              icon: const Icon(Icons.add_circle_outline),
-              label: const Text('ÇAĞRI AÇ'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accentAmber,
-                foregroundColor: AppColors.bgPrimary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 14,
-                ),
-                textStyle: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }

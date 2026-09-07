@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:yaz_boz/models/turnuva_model.dart';
 import 'package:yaz_boz/services/turnuva_servisi.dart';
 import 'package:yaz_boz/services/sezon_servisi.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
 /// Numara Rozeti
 Widget turnuvaNumaraRozeti(
@@ -284,6 +284,7 @@ Widget turnuvaBosDurum(bool gosterArsiv) {
   );
 }
 
+// ✅✅ GÜNCELLENDİ: LOADING DİYALOĞU GÜVENLİĞİ EKLENDİ ✅✅
 Future<void> turnuvaFormuDiyalog(
   BuildContext context, {
   Turnuva? turnuva,
@@ -432,16 +433,22 @@ Future<void> turnuvaFormuDiyalog(
             ),
             onPressed: () async {
               if (tarihCtrl.text.trim().isEmpty) return;
+
+              // Form dialogunu kapat
+              if (!dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+
+              // Loading dialogunu aç
+              if (!context.mounted) return;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) =>
+                    const Center(child: CircularProgressIndicator()),
+              );
+
               try {
                 final svc = TurnuvaServisi();
-                if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-                showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (_) =>
-                      const Center(child: CircularProgressIndicator()),
-                );
                 if (turnuva == null) {
                   final aktifSezon = await SezonServisi().aktifSezonBul();
                   if (aktifSezon == null) {
@@ -471,11 +478,14 @@ Future<void> turnuvaFormuDiyalog(
                     'isLowestWins': isLowestWins,
                   });
                 }
+
+                // Başarılıysa loading'i kapat
                 if (!context.mounted) return;
-                Navigator.pop(context);
+                if (Navigator.canPop(context)) Navigator.pop(context);
               } catch (e) {
+                // Hata durumunda loading'i kapat ve hata göster
                 if (!context.mounted) return;
-                Navigator.pop(context);
+                if (Navigator.canPop(context)) Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Hata: $e'),

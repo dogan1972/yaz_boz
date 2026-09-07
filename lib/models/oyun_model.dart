@@ -15,18 +15,28 @@ class Oyuncu {
   }
 }
 
+// lib/models/turnuva_model.dart içindeki TurBilgisi sınıfı
+
 class TurBilgisi {
   final String id;
   final String turTarih;
   final String? turKazanan;
-  const TurBilgisi({required this.id, required this.turTarih, this.turKazanan});
+  final bool aktifMi; // ✅ YENİ ALAN EKLENDİ
+
+  const TurBilgisi({
+    required this.id,
+    required this.turTarih,
+    this.turKazanan,
+    this.aktifMi = true, // ✅ Varsayılan true
+  });
 
   factory TurBilgisi.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final d = doc.data() as Map<String, dynamic>? ?? {};
     return TurBilgisi(
       id: doc.id,
-      turTarih: data['turTarih']?.toString() ?? '',
-      turKazanan: data['turKazanan']?.toString(),
+      turTarih: d['turTarih']?.toString() ?? '',
+      turKazanan: d['turKazanan']?.toString(),
+      aktifMi: d['aktifMi'] == true, // ✅ Firestore'dan oku
     );
   }
 }

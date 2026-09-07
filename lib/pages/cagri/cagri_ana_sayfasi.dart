@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:yaz_boz/services/auth_service.dart';
 import 'package:yaz_boz/services/cagri_servisi.dart';
 import 'package:yaz_boz/models/cagri_model.dart';
-import 'package:yaz_boz/pages/cagri/cagri_panosu_wrapper.dart';
+import 'package:yaz_boz/pages/cagri/cagri_panosu.dart';
 import 'package:yaz_boz/pages/cagri/cagri_widgets.dart';
 import 'package:yaz_boz/theme/app_theme.dart';
 
@@ -16,18 +16,43 @@ class CagriAnaSayfasi extends StatefulWidget {
 }
 
 class _CagriAnaSayfasiState extends State<CagriAnaSayfasi> {
-  late final String? _uid;
-  late final Stream<List<Cagri>> _listeStream;
+  // ✅ late final KALDIRILDI, nullable yapıldı
+  String? _uid;
+  Stream<List<Cagri>>? _listeStream;
 
   @override
   void initState() {
     super.initState();
-    _uid = AuthService().uid;
-    _listeStream = CagriServisi().son24SaatCagrilariStreami(_uid!);
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    // UID'yi al (AuthService().uid genelde senkron getter'dır)
+    final uid = AuthService().uid;
+
+    if (!mounted) return;
+
+    setState(() {
+      _uid = uid;
+      // Stream sadece uid varsa oluşturulur
+      if (_uid != null) {
+        _listeStream = CagriServisi().son24SaatCagrilariStreami(_uid!);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // ✅ UID henüz yüklenmediyse loading göster (Yatay geçişte güvenli)
+    if (_uid == null) {
+      return const Scaffold(
+        backgroundColor: AppColors.bgPrimary,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.accentAmber),
+        ),
+      );
+    }
+
     final yatay = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
@@ -42,7 +67,6 @@ class _CagriAnaSayfasiState extends State<CagriAnaSayfasi> {
           ),
         ),
       ),
-      // ✅ DİKEY MODDA TAM SAYFA SCROLL DESTEĞİ
       body: yatay
           ? SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -52,7 +76,7 @@ class _CagriAnaSayfasiState extends State<CagriAnaSayfasi> {
                   const CagriPanoWrapper(),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                    child: _listeAlani(disScroll: true),
+                    child: _listeAlani(),
                   ),
                 ],
               ),
@@ -62,28 +86,34 @@ class _CagriAnaSayfasiState extends State<CagriAnaSayfasi> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ✅ PANONUN EKRANI TAŞIRMAMASI İÇİN SINIRLAMA
                   ConstrainedBox(
                     constraints: BoxConstraints(
                       maxHeight: MediaQuery.of(context).size.height * 0.45,
                     ),
                     child: const CagriPanoWrapper(),
                   ),
-                  _listeAlani(disScroll: true),
+                  _listeAlani(),
                 ],
               ),
             ),
     );
   }
 
-  Widget _listeAlani({required bool disScroll}) {
+  Widget _listeAlani() {
+    // ✅ Stream null ise boş döndür
+    if (_listeStream == null || _uid == null) return const SizedBox.shrink();
+
     return StreamBuilder<List<Cagri>>(
       stream: _listeStream,
       builder: (context, snap) {
+        // ✅ KRİTİK: Widget dispose olduysa build etme (Yatay mod hatasını çözer)
+        if (!context.mounted) return const SizedBox.shrink();
+
         final liste = snap.data ?? const [];
+
+        // ✅ uid null olamaz çünkü yukarıda kontrol ettik ama yine de güvenli parametre
         if (liste.isEmpty) return CagriBosDurumEkrani(uid: _uid);
 
-        // ✅ DİKEYDE DE LİSTE ALANI SCROLL EDİLEBİLİR OLSUN
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,6 +133,7 @@ class _CagriAnaSayfasiState extends State<CagriAnaSayfasi> {
                   horizontal: 16,
                   vertical: 6,
                 ),
+                // ✅ _uid! yerine doğrudan _uid (null olmadığı garanti)
                 child: CagriKarti(cagri: c, uid: _uid!),
               ),
             const SizedBox(height: 24),

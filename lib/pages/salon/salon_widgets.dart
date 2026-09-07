@@ -204,13 +204,8 @@ class SalonSandalye extends StatelessWidget {
           ),
         ),
 
-        // ✅ DÜZELTME: Mühürlü çağrıda (!cagri.kilitli) kontrolü KALDIRILDI
-        // Çağrı mühürlense bile 5. ve sonraki kişiler onaylayabilsin diye
-        // sadece 'sonlandi' durumu engelliyor.
-        if (bekliyor &&
-            (cagri.yer != null && cagri.yer!.isNotEmpty) &&
-            cagri.durum != 'sonlandi' &&
-            benim)
+        // ✅ ONAY BUTONU: Sadece bekleyen, bende olan ve sonlanmamış çağrılar için
+        if (bekliyor && cagri.durum != 'sonlandi' && benim)
           Padding(
             padding: const EdgeInsets.only(top: 5),
             child: Material(
@@ -219,12 +214,19 @@ class SalonSandalye extends StatelessWidget {
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
                 onTap: onOnayla,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 5,
+                  ),
                   child: Text(
-                    'ONAYLA',
+                    cagri.yer == null || cagri.yer!.isEmpty
+                        ? 'DETAY BEKLENİYOR'
+                        : 'ONAYLA',
                     style: TextStyle(
-                      color: Color(0xFF06231F),
+                      color: cagri.yer == null || cagri.yer!.isEmpty
+                          ? AppColors.textHint
+                          : const Color(0xFF06231F),
                       fontWeight: FontWeight.w900,
                       fontSize: 10,
                       letterSpacing: 1,
@@ -234,15 +236,13 @@ class SalonSandalye extends StatelessWidget {
               ),
             ),
           )
-        else if (bekliyor &&
-            (cagri.yer == null || cagri.yer!.isEmpty) &&
-            cagri.durum != 'sonlandi' &&
-            benim)
+        else if (!benim && onayli)
           const Padding(
             padding: EdgeInsets.only(top: 5),
-            child: Text(
-              'detay bekleniyor',
-              style: TextStyle(color: AppColors.divider, fontSize: 9),
+            child: Icon(
+              Icons.check_circle,
+              color: AppColors.accentCyan,
+              size: 16,
             ),
           ),
       ],
@@ -508,7 +508,6 @@ class _SalonOrtaBilgiState extends State<SalonOrtaBilgi>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ✅ MEKAN ADI: BÜYÜK VE ORTADA
           Flexible(
             child: Text(
               widget.cagri.yer ?? 'Mekan Belirtilmedi',
@@ -523,8 +522,6 @@ class _SalonOrtaBilgiState extends State<SalonOrtaBilgi>
               ),
             ),
           ),
-
-          // ✅ BULUŞMA SAATİ EKLENDİ
           if (widget.cagri.saat != null && widget.cagri.saat!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Row(

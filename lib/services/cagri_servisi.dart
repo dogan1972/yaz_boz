@@ -1,3 +1,4 @@
+
 // lib/services/cagri_servisi.dart
 import 'package:flutter/foundation.dart';
 import 'dart:async';
@@ -13,13 +14,11 @@ class CagriServisi {
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
   static const String _kol = 'cagrilar';
 
-  // ✅ ÇAĞRI İPTAL ETME
   Future<void> cagriIptalEt(String cagriId) async {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) {
       throw Exception('Grup bilgisi bulunamadı.');
     }
-
     final doc = await _fs.collection(_kol).doc(cagriId).get();
     if (!doc.exists ||
         doc.data()?['grupId'] != k.grupId ||
@@ -29,11 +28,9 @@ class CagriServisi {
     await _fs.collection(_kol).doc(cagriId).update({'durum': 'iptal'});
   }
 
-  // ✅ AÇIK ÇAĞRI STREAMİ
   Stream<Cagri?> acikCagriStreami(String uid) async* {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) yield null;
-
     yield* _fs
         .collection(_kol)
         .where('acanId', isEqualTo: uid)
@@ -48,11 +45,9 @@ class CagriServisi {
         );
   }
 
-  // ✅ DAVETLİ AÇIK ÇAĞRI STREAMİ
   Stream<Cagri?> davetliAcikCagriStreami(String uid) async* {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) yield null;
-
     yield* _fs
         .collection(_kol)
         .where('davetliIds', arrayContains: uid)
@@ -67,7 +62,6 @@ class CagriServisi {
         );
   }
 
-  // ✅ TEKİL ÇAĞRI STREAMİ
   Stream<Cagri?> cagriStreami(String id) {
     return _fs
         .collection(_kol)
@@ -76,7 +70,6 @@ class CagriServisi {
         .map((snap) => snap.exists ? Cagri.fromFirestore(snap) : null);
   }
 
-  // ✅ SON 24 SAAT ÇAĞRILARI STREAMİ
   Stream<List<Cagri>> son24SaatCagrilariStreami(String uid) async* {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) {
@@ -84,7 +77,6 @@ class CagriServisi {
       return;
     }
     final grupId = k.grupId!;
-
     late StreamController<List<Cagri>> controller;
     StreamSubscription<QuerySnapshot>? subAcan;
     StreamSubscription<QuerySnapshot>? subDavet;
@@ -96,9 +88,9 @@ class CagriServisi {
           final aAktif = (a.durum == 'acik' || a.durum == 'onaylandi') ? 1 : 0;
           final bAktif = (b.durum == 'acik' || b.durum == 'onaylandi') ? 1 : 0;
           if (aAktif != bAktif) return bAktif.compareTo(aAktif);
-          final ta = a.olusturma?.millisecondsSinceEpoch ?? 0;
-          final tb = b.olusturma?.millisecondsSinceEpoch ?? 0;
-          return tb.compareTo(ta);
+          return (b.olusturma?.millisecondsSinceEpoch ?? 0).compareTo(
+            a.olusturma?.millisecondsSinceEpoch ?? 0,
+          );
         });
       if (!controller.isClosed) controller.add(liste);
     }
@@ -144,7 +136,7 @@ class CagriServisi {
     return DateTime.now().difference(t.toDate()).inHours < 24;
   }
 
-  // ✅ PANO VERİSİ STREAMİ
+  // ✅✅ GÜNCELLENDİ: uid PARAMETRESİ KULLANIMI KALDIRILDI ✅✅
   Stream<PanoVerisi> panoStreami(String uid) async* {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) {
@@ -164,9 +156,11 @@ class CagriServisi {
       if (ctrl.isClosed) return;
 
       if (benim != null) {
-        ctrl.add(PanoVerisi.cagri(benim!, benAcan: true, uid: uid));
+        // ✅ DÜZELTME: uid parametresi kaldırıldı
+        ctrl.add(PanoVerisi.cagri(benim!, benAcan: true));
       } else if (davet != null) {
-        ctrl.add(PanoVerisi.cagri(davet!, benAcan: false, uid: uid));
+        // ✅ DÜZELTME: uid parametresi kaldırıldı
+        ctrl.add(PanoVerisi.cagri(davet!, benAcan: false));
       } else {
         ctrl.add(PanoVerisi.bos());
       }
@@ -209,7 +203,6 @@ class CagriServisi {
     yield* ctrl.stream;
   }
 
-  // ✅ ÇAĞRI AÇMA
   Future<void> cagriAc({
     required String acanId,
     required String acanAd,
@@ -224,13 +217,15 @@ class CagriServisi {
       throw Exception('Grup bilgisi bulunamadı.');
     }
 
+    // ✅ Çağrıyı açan kişiyi listenin BAŞINA ekle
+    final tumKatilimcilar = [acanId, ...davetliIds];
+
     await _fs.collection(_kol).add({
       'acanId': acanId,
       'acanAd': acanAd,
       'durum': 'acik',
-      'hedef': davetliIds.length,
-      'davetliIds': davetliIds,
-      'onaylar': [],
+      'davetliIds': tumKatilimcilar,
+      'onaylar': [acanId],
       'saat': saat,
       'tarih': tarih,
       'yer': yer,
@@ -240,7 +235,6 @@ class CagriServisi {
     });
   }
 
-  // ✅ BULUŞMA KAYDETME
   Future<void> bulusmaKaydet({
     required String id,
     required String saat,
@@ -252,14 +246,12 @@ class CagriServisi {
     if (k == null || k.grupId == null) {
       throw Exception('Grup bilgisi bulunamadı.');
     }
-
     final doc = await _fs.collection(_kol).doc(id).get();
     if (!doc.exists ||
         doc.data()?['grupId'] != k.grupId ||
         doc.data()?['acanId'] != k.uid) {
       throw Exception('Bu çağrıyı düzenleme yetkiniz yok.');
     }
-
     await _fs.collection(_kol).doc(id).update({
       'saat': saat,
       'tarih': tarih,
@@ -268,7 +260,6 @@ class CagriServisi {
     });
   }
 
-  // ✅ MÜHÜRLÜ ÇAĞRIYA DA ONAY DESTEKLİ SIRALI ONAY
   Future<void> onayla(String id, String uid) async {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) {
@@ -276,11 +267,9 @@ class CagriServisi {
     }
 
     final docRef = _fs.collection(_kol).doc(id);
-
     final docSnap = await docRef.get();
     if (!docSnap.exists) throw Exception('Çağrı bulunamadı.');
-    final docData = docSnap.data() as Map<String, dynamic>;
-    if (docData['grupId'] != k.grupId) {
+    if (docSnap.data()?['grupId'] != k.grupId) {
       throw Exception('Farklı gruptaki çağrıya onay veremezsiniz.');
     }
 
@@ -289,66 +278,52 @@ class CagriServisi {
       if (!snap.exists) return null;
 
       final c = Cagri.fromFirestore(snap);
-
-      // ✅ Hem 'acik' hem de 'onaylandi' durumlarında onay verilebilir
       if (c.durum != 'acik' && c.durum != 'onaylandi') return null;
-
-      // Zaten onaylamışsa tekrar ekleme
       if (c.onaylar.contains(uid)) return null;
 
       final yeniOnaylar = [...c.onaylar, uid];
       final bool zatenMuhurlu = c.durum == 'onaylandi';
 
-      // Çağrıcı her zaman onaylı kabul edilir
-      final Set<String> tumOnaylilar = {c.acanId, ...yeniOnaylar};
-
-      // Oyunun başlaması için: Tüm davetliler onayladı VEYA 4 kişi tamamlandı
-      final bool tumDavetlilerOnayladi = c.davetliIds.every(
-        (d) => tumOnaylilar.contains(d),
-      );
-      final bool dortKisiTamamlandi = tumOnaylilar.length >= 4;
-      final bool oyunBaslayabilir = tumDavetlilerOnayladi || dortKisiTamamlandi;
-
-      // Eğer çağrı zaten mühürlüyse durumu değiştirme, sadece onay listesini güncelle
+      // ✅✅ KRİTİK DÜZELTME: Oyun Başlama Koşulu Güncellendi ✅✅
+      // Eski: yeniOnaylar.length >= c.hedef (Herkes onayladı mı?)
+      // Yeni: En az 4 kişi onayladı mı? (Çağrıcı dahil)
+      final bool oyunBaslayabilir =
+          yeniOnaylar.length >= 4 || yeniOnaylar.length >= c.hedef;
       if (zatenMuhurlu) {
         tx.update(docRef, {'onaylar': yeniOnaylar});
       } else {
         tx.update(docRef, {
           'onaylar': yeniOnaylar,
+          // ✅ 4. kişi onayladığı anda durum 'onaylandi' olacak
           if (oyunBaslayabilir) 'durum': 'onaylandi',
         });
       }
 
-      // Otomasyon sadece ilk mühürlemede çalışmalı
+      // Otomasyon sadece durum 'acik'ten 'onaylandi'ye geçtiğinde tetiklenir
       if (!zatenMuhurlu && oyunBaslayabilir) {
         return Cagri(
           id: c.id,
           acanId: c.acanId,
           acanAd: c.acanAd,
           durum: 'onaylandi',
-          hedef: c.hedef,
           davetliIds: c.davetliIds,
           saat: c.saat,
           tarih: c.tarih,
           yer: c.yer,
           konumAd: c.konumAd,
-          onaylar: tumOnaylilar.toList(),
+          onaylar: yeniOnaylar,
           olusturma: c.olusturma,
         );
       }
-
-      // Zaten mühürlüyse otomasyon tetikleme
       return null;
     });
 
     try {
       await _fs.collection('kullanicilar').doc(uid).update({'durum': 'musait'});
     } catch (_) {}
-
     if (sonuc != null && sonuc.durum == 'onaylandi') await _otomasyon(sonuc);
   }
 
-  // ✅ OTOMASYON — UID DESTEKLİ OYUN OLUŞTURMA
   Future<void> _otomasyon(Cagri cagri) async {
     try {
       final k = await AuthService().profilGarantile();
@@ -360,103 +335,15 @@ class CagriServisi {
           .collection('oyunlar')
           .where('grupId', isEqualTo: grupId)
           .where('oyunKazanan', isEqualTo: null)
-          .where('aktifMi', isEqualTo: true) // ✅ EKLENDİ
+          .where('aktifMi', isEqualTo: true)
           .limit(1)
           .get();
       if (oyunlarSnap.docs.isNotEmpty) return;
 
-      final uidSira = <String>[
-        cagri.acanId,
-        ...cagri.onaylar.where((u) => u != cagri.acanId),
-      ];
-      final dortUid = uidSira.take(4).toList();
-      if (dortUid.isEmpty) return;
-
-      final isimler = <String>[];
-      for (final u in dortUid) {
-        final ad = await _oyuncuAdi(u);
-        isimler.add(ad);
-      }
-      final oyuncuMetni = isimler.join(', ');
-      final adTarih = cagri.adlandirmaTarihi;
-
-      // ✅ SEZON ARAMA — aktifMi kontrolü eklendi
-      final sezonlarSnap = await _fs
-          .collection('sezonlar')
-          .where('grupId', isEqualTo: grupId)
-          .where('sezonSampiyon', isEqualTo: null)
-          .where('aktifMi', isEqualTo: true) // ✅ EKLENDİ: Sadece aktif sezonlar
-          .limit(1)
-          .get();
-      String aktifSezonId;
-      if (sezonlarSnap.docs.isNotEmpty) {
-        aktifSezonId = sezonlarSnap.docs.first.id;
-      } else {
-        final nRef = _fs.collection('metadata').doc('sezon_numarasi');
-        int yeniNumara = 1;
-        await _fs.runTransaction((tx) async {
-          final doc = await tx.get(nRef);
-          if (doc.exists) {
-            yeniNumara = (doc.data()?['son_numara'] ?? 0) + 1;
-            tx.update(nRef, {'son_numara': yeniNumara});
-          } else {
-            tx.set(nRef, {'son_numara': 1});
-          }
-        });
-
-        final ref = _fs.collection('sezonlar').doc();
-        await ref.set({
-          'numara': yeniNumara,
-          'grupId': grupId,
-          'sezonTarih': '$adTarih - Sezon $yeniNumara',
-          'sezonSampiyon': null,
-          'aktifMi': true, // ✅ Yeni sezon aktif oluşturuluyor
-        });
-        aktifSezonId = ref.id;
-      }
-
-      // ✅ TURNUVA ARAMA — aktifMi kontrolü eklendi (KRİTİK DÜZELTME)
-      final turnuvaSnap = await _fs
-          .collection('turnuva')
-          .where('grupId', isEqualTo: grupId)
-          .where('turKazanan', isEqualTo: null)
-          .where('aktifMi', isEqualTo: true) // ✅ EKLENDİ: Pasif/arşiv atlanır
-          .limit(1)
-          .get();
-      String aktifTurnuvaId;
-      if (turnuvaSnap.docs.isNotEmpty) {
-        aktifTurnuvaId = turnuvaSnap.docs.first.id;
-      } else {
-        final nRef = _fs.collection('metadata').doc('turnuva_numarasi');
-        int yeniNumara = 1;
-        await _fs.runTransaction((tx) async {
-          final doc = await tx.get(nRef);
-          if (doc.exists) {
-            yeniNumara = (doc.data()?['son_numara'] ?? 0) + 1;
-            tx.update(nRef, {'son_numara': yeniNumara});
-          } else {
-            tx.set(nRef, {'son_numara': 1});
-          }
-        });
-
-        final ref = _fs.collection('turnuva').doc();
-        await ref.set({
-          'numara': yeniNumara,
-          'sezonId': aktifSezonId,
-          'grupId': grupId,
-          'turTarih': '$adTarih - Turnuva $yeniNumara',
-          'turKazanan': null,
-          'turIkinci': null,
-          'turUcuncu': null,
-          'turKaybeden': null,
-          'tursonuc': 0,
-          'aktifMi': true, // ✅ Yeni turnuva aktif oluşturuluyor
-        });
-        aktifTurnuvaId = ref.id;
-      }
-
+      // ✅ SADECE OYUN NUMARASI GLOBAL ARTSIN
       final nRef = _fs.collection('metadata').doc('oyun_numarasi');
       int oyunNo = 1;
+
       await _fs.runTransaction((tx) async {
         final doc = await tx.get(nRef);
         if (doc.exists) {
@@ -467,12 +354,105 @@ class CagriServisi {
         }
       });
 
-      final oyunRef = _fs.collection('oyunlar').doc();
-      await oyunRef.set({
-        'numara': oyunNo,
+      // ✅ SEZON: Eğer aktif sezon yoksa YENİ oluştur, varsa mevcut olanı kullan
+      String aktifSezonId;
+
+      final sezonlarSnap = await _fs
+          .collection('sezonlar')
+          .where('grupId', isEqualTo: grupId)
+          .where('sezonSampiyon', isEqualTo: null)
+          .where('aktifMi', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (sezonlarSnap.docs.isNotEmpty) {
+        aktifSezonId = sezonlarSnap.docs.first.id;
+      } else {
+        // Yeni sezon oluştur - NUMARA OYUN NUMARASINA BAĞLI DEĞİL, AYRI SAYAÇ
+        final sRef = _fs.collection('metadata').doc('sezon_numarasi');
+        int yeniSezonNo = 1;
+        await _fs.runTransaction((tx) async {
+          final doc = await tx.get(sRef);
+          if (doc.exists) {
+            yeniSezonNo = (doc.data()?['son_numara'] ?? 0) + 1;
+            tx.update(sRef, {'son_numara': yeniSezonNo});
+          } else {
+            tx.set(sRef, {'son_numara': 1});
+          }
+        });
+
+        final ref = _fs.collection('sezonlar').doc();
+        await ref.set({
+          'numara': yeniSezonNo,
+          'grupId': grupId,
+          'sezonTarih': '${cagri.adlandirmaTarihi} - Sezon $yeniSezonNo',
+          'sezonSampiyon': null,
+          'aktifMi': true,
+        });
+        aktifSezonId = ref.id;
+      }
+
+      // ✅ TURNUVA: Eğer aktif turnuva yoksa YENİ oluştur, varsa mevcut olanı kullan
+      String aktifTurnuvaId;
+
+      final turnuvaSnap = await _fs
+          .collection('turnuva')
+          .where('grupId', isEqualTo: grupId)
+          .where('turKazanan', isEqualTo: null)
+          .where('aktifMi', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (turnuvaSnap.docs.isNotEmpty) {
+        aktifTurnuvaId = turnuvaSnap.docs.first.id;
+      } else {
+        // Yeni turnuva oluştur - NUMARA AYRI SAYAÇ
+        final tRef = _fs.collection('metadata').doc('turnuva_numarasi');
+        int yeniTurnuvaNo = 1;
+        await _fs.runTransaction((tx) async {
+          final doc = await tx.get(tRef);
+          if (doc.exists) {
+            yeniTurnuvaNo = (doc.data()?['son_numara'] ?? 0) + 1;
+            tx.update(tRef, {'son_numara': yeniTurnuvaNo});
+          } else {
+            tx.set(tRef, {'son_numara': 1});
+          }
+        });
+
+        final ref = _fs.collection('turnuva').doc();
+        await ref.set({
+          'numara': yeniTurnuvaNo,
+          'sezonId': aktifSezonId,
+          'grupId': grupId,
+          'turTarih': '${cagri.adlandirmaTarihi} - Turnuva $yeniTurnuvaNo',
+          'turKazanan': null,
+          'turIkinci': null,
+          'turUcuncu': null,
+          'turKaybeden': null,
+          'tursonuc': 0,
+          'aktifMi': true,
+        });
+        aktifTurnuvaId = ref.id;
+      }
+
+      // ✅ OYUN OLUŞTUR - SADECE OYUN NO GLOBAL ARTIYOR
+      final dortUid = cagri.onaylar.take(4).toList();
+      if (dortUid.isEmpty) return;
+
+      final isimler = <String>[];
+      for (final u in dortUid) {
+        final ad = await _oyuncuAdi(u);
+        isimler.add(ad);
+      }
+      final oyuncuMetni = isimler.join(', ');
+
+      await _fs.collection('oyunlar').doc().set({
+        'numara': oyunNo, // ✅ GLOBAL ARTAN TEK NUMARA
         'turId': aktifTurnuvaId,
+        'sezonId': aktifSezonId,
         'grupId': grupId,
-        'oyunTarih': '$adTarih - Oyun $oyunNo',
+        'oyunTarih':
+            '${cagri.adlandirmaTarihi} - Oyun $oyunNo', // ✅ TUTARLI FORMAT
         'elSayisi': 8,
         'oyuncuSayisi': dortUid.length,
         'oyuncuIds': dortUid,
@@ -482,14 +462,13 @@ class CagriServisi {
         'oyunKaybeden': null,
         'oyunKaybedenUid': null,
         'esliMi': 0,
-        'aktifMi': true, // ✅ Yeni oyun aktif oluşturuluyor
+        'aktifMi': true,
       });
     } catch (e, st) {
-      if (kDebugMode) debugPrint('❌ OTOMASYON HATASI: $e\n$st');
+      if (kDebugMode) debugPrint(' OTOMASYON HATASI: $e\n$st');
     }
   }
 
-  /// uid → oyuncu adı
   Future<String> _oyuncuAdi(String uid) async {
     try {
       final kSnap = await _fs.collection('kullanicilar').doc(uid).get();
@@ -506,13 +485,11 @@ class CagriServisi {
     return 'Oyuncu';
   }
 
-  // ✅ SONLANDIRMA
   Future<void> sonlandir(String id) async {
     final k = await AuthService().profilGarantile();
     if (k == null || k.grupId == null) {
       throw Exception('Grup bilgisi bulunamadı.');
     }
-
     final doc = await _fs.collection(_kol).doc(id).get();
     if (!doc.exists ||
         doc.data()?['grupId'] != k.grupId ||
@@ -522,7 +499,6 @@ class CagriServisi {
     await _fs.collection(_kol).doc(id).update({'durum': 'sonlandi'});
   }
 
-  // ✅ GÜNCELLEME
   Future<void> cagriGuncelle({
     required String cagriId,
     String? saat,
@@ -553,6 +529,7 @@ class PanoVerisi {
   final int onaySayisi;
   final bool kilitli;
   final int hedef;
+
   const PanoVerisi({
     required this.aktif,
     required this.cagriId,
@@ -562,6 +539,7 @@ class PanoVerisi {
     required this.kilitli,
     required this.hedef,
   });
+
   factory PanoVerisi.bos() => PanoVerisi(
     aktif: false,
     cagriId: null,
@@ -571,17 +549,68 @@ class PanoVerisi {
     kilitli: false,
     hedef: 0,
   );
-  factory PanoVerisi.cagri(
-    Cagri c, {
-    required bool benAcan,
-    required String uid,
-  }) => PanoVerisi(
-    aktif: c.durum == 'acik' || c.durum == 'onaylandi',
-    cagriId: c.id,
-    acanAd: c.acanAd,
-    benAcan: benAcan,
-    onaySayisi: c.onaylar.length + 1,
-    kilitli: c.durum == 'onaylandi',
-    hedef: c.davetliIds.length + 1,
-  );
+
+  // ✅ GÜNCELLENDİ: SAAT KONTROLÜ EKLENDİ
+  factory PanoVerisi.cagri(Cagri c, {required bool benAcan}) {
+    bool isAktif = c.durum == 'acik' || c.durum == 'onaylandi';
+    bool isKilitli = c.durum == 'onaylandi';
+
+    // Eğer çağrı mühürlüyse (onaylandi), saati kontrol et
+    if (c.durum == 'onaylandi') {
+      try {
+        // Saat formatı muhtemelen "HH:mm" (örn: "19:30")
+        // Tarih formatı muhtemelen "dd.MM.yyyy" (örn: "04.09.2026")
+
+        DateTime? bulusmaZamani;
+
+        if (c.tarih != null &&
+            c.tarih!.isNotEmpty &&
+            c.saat != null &&
+            c.saat!.isNotEmpty) {
+          // Tarih ve saat varsa birleştir
+          final parts = c.tarih!.split('.'); // 04.09.2026 -> [04, 09, 2026]
+          final timeParts = c.saat!.split(':'); // 19:30 -> [19, 30]
+
+          if (parts.length == 3 && timeParts.length == 2) {
+            bulusmaZamani = DateTime(
+              int.parse(parts[2]), // Yıl
+              int.parse(parts[1]), // Ay
+              int.parse(parts[0]), // Gün
+              int.parse(timeParts[0]), // Saat
+              int.parse(timeParts[1]), // Dakika
+            );
+          }
+        } else if (c.olusturma != null &&
+            c.saat != null &&
+            c.saat!.isNotEmpty) {
+          // Sadece saat varsa ve tarih yoksa, oluşturma tarihini baz alarak bugünü varsayabiliriz
+          // Ama senin sisteminde tarih genelde var görünüyor.
+          // Güvenlik için sadece tarih+saat ikisi de varsa kontrol yapıyoruz.
+        }
+
+        // Eğer buluşma zamanı hesaplandıysa ve şu andan 12 saat (720 dk) önceyse -> PASİF YAP
+        if (bulusmaZamani != null) {
+          final fark = DateTime.now().difference(bulusmaZamani);
+          if (fark.inMinutes > 720) {
+            // 12 saat * 60 dk
+            isAktif = false;
+            isKilitli = false; // Tikleri boşaltmak için kilidi de kaldırıyoruz
+          }
+        }
+      } catch (e) {
+        debugPrint('PanoVerisi tarih parse hatası: $e');
+        // Hata olursa varsayılan davranış (aktif) kalsın
+      }
+    }
+
+    return PanoVerisi(
+      aktif: isAktif,
+      cagriId: c.id,
+      acanAd: c.acanAd,
+      benAcan: benAcan,
+      onaySayisi: c.onaylar.length,
+      kilitli: isKilitli,
+      hedef: c.hedef,
+    );
+  }
 }

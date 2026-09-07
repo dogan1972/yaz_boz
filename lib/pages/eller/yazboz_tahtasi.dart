@@ -1,6 +1,6 @@
 // lib/pages/eller/yazboz_tahtasi.dart
 import 'package:flutter/material.dart';
-import 'package:yaz_boz/models/el_model.dart';
+import 'package:yaz_boz/models/eller_sayfasi_model.dart';
 import 'package:yaz_boz/models/oyun_model.dart';
 import 'package:yaz_boz/pages/eller/yazboz_widgets.dart';
 import 'package:yaz_boz/theme/app_theme.dart';

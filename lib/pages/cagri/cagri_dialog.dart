@@ -232,7 +232,7 @@ Future<void> cagriAcDialogu(
                       fontSize: 14,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Örn: Delta Kafe',
+                      hintText: 'Örn: Saat Kulesi',
                       hintStyle: const TextStyle(color: Color(0xFF475569)),
                       filled: true,
                       fillColor: AppColors.inputBg,

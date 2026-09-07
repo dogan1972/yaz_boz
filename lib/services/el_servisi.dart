@@ -1,6 +1,6 @@
 // lib/services/el_servisi.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:yaz_boz/models/el_model.dart';
+import 'package:yaz_boz/models/eller_sayfasi_model.dart';
 import 'package:yaz_boz/services/auth_service.dart';
 
 class ElServisi {

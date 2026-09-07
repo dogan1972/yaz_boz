@@ -29,11 +29,8 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
   }
 
   void _verileriDinle() {
-    // Oyunlar stream'i
     OyunServisi().tumOyunlarStreami().listen((yeniOyunlar) {
       if (!mounted) return;
-
-      // ✅ GÜNCELLENDİ: aktifMi değişikliği de setState'i tetikler
       if (yeniOyunlar.length != _tumOyunlar.length ||
           !_listelerEsitMi(yeniOyunlar, _tumOyunlar)) {
         setState(() {
@@ -46,7 +43,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
     });
   }
 
-  // ✅ AKTİF Mİ ALANI KARŞILAŞTIRMAYA DAHİL EDİLDİ
   bool _listelerEsitMi(List<Oyun> a, List<Oyun> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
@@ -54,14 +50,12 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
           a[i].oyunKazanan != b[i].oyunKazanan ||
           a[i].oyunTarih != b[i].oyunTarih ||
           a[i].aktifMi != b[i].aktifMi) {
-        // ✅ YENİ
         return false;
       }
     }
     return true;
   }
 
-  // ✅ OYUN SONLANDIRMA
   Future<void> _oyunuSonlandir(Oyun oyun) async {
     if (!mounted) return;
     showDialog(
@@ -386,7 +380,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                             children: [
                               Row(
                                 children: [
-                                  // ✅ DÜZELTME: n parametresi isimli olarak gönderildi
                                   oyunNumaraRozeti(
                                     n: oyun.numara,
                                     renk: AppColors.textSecondary,
@@ -588,8 +581,12 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
     );
   }
 
+  // lib/pages/oyunlar/oyunlar_sayfasi.dart içindeki _aktifHeroGorunumu metodu
+
   Widget _aktifHeroGorunumu(Oyun oyun) {
-    final double h = MediaQuery.of(context).size.height;
+    final bool yatay =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
       child: GestureDetector(
@@ -603,7 +600,12 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
           ),
         ),
         child: Container(
-          height: h * 0.55,
+          constraints: BoxConstraints(
+            minHeight: 200,
+            maxHeight: yatay
+                ? MediaQuery.of(context).size.height * 0.8
+                : double.infinity,
+          ),
           width: double.infinity,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
@@ -626,219 +628,418 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
           ),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ✅ DÜZELTME: n parametresi isimli olarak gönderildi
-                          oyunNumaraRozeti(
-                            n: oyun.numara,
-                            renk: AppColors.accentAmber,
-                            font: 15,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            "Masa: ${oyun.oyunTarih}",
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+            child: yatay
+                ? _yatayOyunKartiIcerigi(oyun)
+                : _dikeyOyunKartiIcerigi(oyun),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ YATAY MOD İÇİN AYRI WIDGET (Butonlar geri bağlandı)
+  Widget _yatayOyunKartiIcerigi(Oyun oyun) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              oyunNumaraRozeti(
+                n: oyun.numara,
+                renk: AppColors.accentAmber,
+                font: 15,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Masa: ${oyun.oyunTarih}",
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "YAZ BOZ DEFTERİ AÇIK",
+                style: TextStyle(
+                  color: AppColors.accentGreen,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Kadro: ${oyun.oyuncu}",
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 24),
+        Expanded(
+          flex: 1,
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              // ✅ PAYLAŞ BUTONU GERİ BAĞLANDI
+              _heroButon(Icons.share, AppColors.accentCyan, "Paylaş", () async {
+                if (!mounted) return;
+                String metin =
+                    "️ YAZ BOZ MAÇI DEVAM EDİYOR \n📅 Tarih: ${oyun.oyunTarih}\n Masadakiler: ${oyun.oyuncu}\n Format: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu\n-----------------------------------\nMaç devam ediyor! ";
+                final uri = Uri.parse(
+                  "https://wa.me/?text=${Uri.encodeComponent(metin)}",
+                );
+                try {
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("Hata: $e"),
+                        backgroundColor: Colors.orange.shade800,
                       ),
+                    );
+                  }
+                }
+              }),
+
+              // ✅ DÜZENLE BUTONU GERİ BAĞLANDI
+              _heroButon(
+                Icons.edit,
+                AppColors.textPrimary,
+                "Düzenle",
+                () async {
+                  if (!mounted) return;
+                  final guncelOyuncular = await OyunServisi()
+                      .tumOyunculariGetir();
+                  if (!mounted) return;
+                  final aktifTurnuva = await TurnuvaServisi().aktifTurnuvaBul();
+                  final turnuvaList = aktifTurnuva != null
+                      ? [
+                          TurBilgisi(
+                            id: aktifTurnuva.id,
+                            turTarih: aktifTurnuva.turTarih ?? '',
+                            turKazanan: aktifTurnuva.turKazanan,
+                          ),
+                        ]
+                      : <TurBilgisi>[];
+                  if (!mounted) return;
+                  oyunFormuDiyalog(
+                    context,
+                    oyun: oyun,
+                    guncelOyuncuListesi: guncelOyuncular,
+                    turnuvalar: turnuvaList,
+                  );
+                },
+              ),
+
+              // ✅ SONLANDIR BUTONU GERİ BAĞLANDI
+              _heroButon(
+                Icons.flag,
+                AppColors.accentGreen,
+                "Sonlandır",
+                () async => _oyunuSonlandir(oyun),
+              ),
+
+              // ✅ SİL BUTONU GERİ BAĞLANDI
+              _heroButon(Icons.delete, Colors.amber.shade700, "Sil", () async {
+                if (!mounted) return;
+                bool? onay = await showDialog<bool>(
+                  context: context,
+                  builder: (d) => AlertDialog(
+                    backgroundColor: AppColors.cardBg,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      width: 56,
-                      height: 56,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.accentAmber.withValues(alpha: 0.15),
-                        border: Border.all(
-                          color: AppColors.accentAmber.withValues(alpha: 0.4),
+                    title: const Text(
+                      'Oyunu Sil',
+                      style: AppTextStyles.bodyPrimary,
+                    ),
+                    content: const Text(
+                      'Bu oyunu ve tüm verilerini silmek istediğine emin misin?',
+                      style: AppTextStyles.bodySecondary,
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(d, false),
+                        child: const Text(
+                          'İptal',
+                          style: AppTextStyles.bodySecondary,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.style,
-                        color: AppColors.accentAmber,
-                        size: 30,
-                      ),
-                    ),
-                  ],
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.play_circle_filled,
-                      color: AppColors.accentGreen,
-                      size: 54,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "YAZ BOZ DEFTERİ AÇIK",
-                      style: TextStyle(
-                        color: AppColors.accentGreen,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      "Kadro: ${oyun.oyuncu}\nFormat: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      oyunHeroAksiyonButonu(
-                        icon: Icons.share,
-                        renk: AppColors.accentCyan,
-                        etiket: "Paylaş",
-                        onTap: () async {
-                          if (!context.mounted) return;
-                          String metin =
-                              "️ YAZ BOZ MAÇI DEVAM EDİYOR \n📅 Tarih: ${oyun.oyunTarih}\n Masadakiler: ${oyun.oyuncu}\n Format: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu\n-----------------------------------\nMaç devam ediyor! ";
-                          final uri = Uri.parse(
-                            "https://wa.me/?text=${Uri.encodeComponent(metin)}",
-                          );
-                          try {
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(
-                                uri,
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text("Hata: $e"),
-                                  backgroundColor: Colors.orange.shade800,
-                                ),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                      oyunHeroAksiyonButonu(
-                        icon: Icons.edit,
-                        renk: AppColors.textPrimary,
-                        etiket: "Düzenle",
-                        onTap: () async {
-                          if (!mounted) return;
-                          final guncelOyuncular = await OyunServisi()
-                              .tumOyunculariGetir();
-                          if (!mounted) return;
-
-                          final aktifTurnuva = await TurnuvaServisi()
-                              .aktifTurnuvaBul();
-
-                          final turnuvaList = aktifTurnuva != null
-                              ? [
-                                  TurBilgisi(
-                                    id: aktifTurnuva.id,
-                                    turTarih: aktifTurnuva.turTarih ?? '',
-                                    turKazanan: aktifTurnuva.turKazanan,
-                                  ),
-                                ]
-                              : <TurBilgisi>[];
-                          if (!mounted) return;
-
-                          oyunFormuDiyalog(
-                            context,
-                            oyun: oyun,
-                            guncelOyuncuListesi: guncelOyuncular,
-                            turnuvalar: turnuvaList,
-                          );
-                        },
-                      ),
-                      oyunHeroAksiyonButonu(
-                        icon: Icons.flag,
-                        renk: AppColors.accentGreen,
-                        etiket: "Sonlandır",
-                        onTap: () async => _oyunuSonlandir(oyun),
-                      ),
-                      oyunHeroAksiyonButonu(
-                        icon: Icons.delete,
-                        renk: Colors.amber.shade700,
-                        etiket: "Sil",
-                        onTap: () async {
-                          if (!mounted) return;
-                          bool? onay = await showDialog<bool>(
-                            context: context,
-                            builder: (d) => AlertDialog(
-                              backgroundColor: AppColors.cardBg,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              title: const Text(
-                                'Oyunu Sil',
-                                style: AppTextStyles.bodyPrimary,
-                              ),
-                              content: const Text(
-                                'Bu oyunu ve tüm verilerini silmek istediğine emin misin?',
-                                style: AppTextStyles.bodySecondary,
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(d, false),
-                                  child: const Text(
-                                    'İptal',
-                                    style: AppTextStyles.bodySecondary,
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(d, true),
-                                  child: const Text(
-                                    'Sil',
-                                    style: TextStyle(
-                                      color: AppColors.accentRed,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (onay == true && mounted) await _oyunuSil(oyun);
-                        },
+                      TextButton(
+                        onPressed: () => Navigator.pop(d, true),
+                        child: const Text(
+                          'Sil',
+                          style: TextStyle(color: AppColors.accentRed),
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
+                );
+                if (onay == true && mounted) await _oyunuSil(oyun);
+              }),
+            ],
           ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ DİKEY MOD İÇİN AYRI WIDGET (Butonlar zaten bağlıydı, aynen korundu)
+  Widget _dikeyOyunKartiIcerigi(Oyun oyun) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  oyunNumaraRozeti(
+                    n: oyun.numara,
+                    renk: AppColors.accentAmber,
+                    font: 15,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Masa: ${oyun.oyunTarih}",
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.accentAmber.withValues(alpha: 0.15),
+                border: Border.all(
+                  color: AppColors.accentAmber.withValues(alpha: 0.4),
+                ),
+              ),
+              child: const Icon(
+                Icons.style,
+                color: AppColors.accentAmber,
+                size: 30,
+              ),
+            ),
+          ],
+        ),
+        Flexible(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.play_circle_filled,
+                color: AppColors.accentGreen,
+                size: 54,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "YAZ BOZ DEFTERİ AÇIK",
+                style: TextStyle(
+                  color: AppColors.accentGreen,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                "Kadro: ${oyun.oyuncu}\nFormat: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu",
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Wrap(
+            alignment: WrapAlignment.spaceEvenly,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              // ✅ DİKEY MODDA DA TÜM BUTONLAR BAĞLI
+              oyunHeroAksiyonButonu(
+                icon: Icons.share,
+                renk: AppColors.accentCyan,
+                etiket: "Paylaş",
+                onTap: () async {
+                  if (!mounted) return;
+                  String metin =
+                      "️ YAZ BOZ MAÇI DEVAM EDİYOR \n📅 Tarih: ${oyun.oyunTarih}\n Masadakiler: ${oyun.oyuncu}\n Format: ${oyun.elSayisi} El / ${oyun.oyuncuSayisi} Oyuncu\n-----------------------------------\nMaç devam ediyor! ";
+                  final uri = Uri.parse(
+                    "https://wa.me/?text=${Uri.encodeComponent(metin)}",
+                  );
+                  try {
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Hata: $e"),
+                          backgroundColor: Colors.orange.shade800,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+              oyunHeroAksiyonButonu(
+                icon: Icons.edit,
+                renk: AppColors.textPrimary,
+                etiket: "Düzenle",
+                onTap: () async {
+                  if (!mounted) return;
+                  final guncelOyuncular = await OyunServisi()
+                      .tumOyunculariGetir();
+                  if (!mounted) return;
+                  final aktifTurnuva = await TurnuvaServisi().aktifTurnuvaBul();
+                  final turnuvaList = aktifTurnuva != null
+                      ? [
+                          TurBilgisi(
+                            id: aktifTurnuva.id,
+                            turTarih: aktifTurnuva.turTarih ?? '',
+                            turKazanan: aktifTurnuva.turKazanan,
+                          ),
+                        ]
+                      : <TurBilgisi>[];
+                  if (!mounted) return;
+                  oyunFormuDiyalog(
+                    context,
+                    oyun: oyun,
+                    guncelOyuncuListesi: guncelOyuncular,
+                    turnuvalar: turnuvaList,
+                  );
+                },
+              ),
+              oyunHeroAksiyonButonu(
+                icon: Icons.flag,
+                renk: AppColors.accentGreen,
+                etiket: "Sonlandır",
+                onTap: () async => _oyunuSonlandir(oyun),
+              ),
+              oyunHeroAksiyonButonu(
+                icon: Icons.delete,
+                renk: Colors.amber.shade700,
+                etiket: "Sil",
+                onTap: () async {
+                  if (!mounted) return;
+                  bool? onay = await showDialog<bool>(
+                    context: context,
+                    builder: (d) => AlertDialog(
+                      backgroundColor: AppColors.cardBg,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      title: const Text(
+                        'Oyunu Sil',
+                        style: AppTextStyles.bodyPrimary,
+                      ),
+                      content: const Text(
+                        'Bu oyunu ve tüm verilerini silmek istediğine emin misin?',
+                        style: AppTextStyles.bodySecondary,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(d, false),
+                          child: const Text(
+                            'İptal',
+                            style: AppTextStyles.bodySecondary,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(d, true),
+                          child: const Text(
+                            'Sil',
+                            style: TextStyle(color: AppColors.accentRed),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (onay == true && mounted) await _oyunuSil(oyun);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ BUTON OLUŞTURMA YARDIMCISI
+  Widget _heroButon(
+    IconData icon,
+    Color renk,
+    String etiket,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: renk, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              etiket,
+              style: TextStyle(
+                color: renk.withValues(alpha: 0.9),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -855,7 +1056,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
       );
     }
 
-    // ✅ GÜNCELLENDİ: Filtreleme artık hem oyunKazanan hem de aktifMi'ye bakıyor
     final oyunlarListesi = _tumOyunlar
         .where(
           (o) => _gosterArsiv
@@ -864,7 +1064,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
         )
         .toList();
 
-    // ✅ DEĞİŞİKLİK: Aktif turnuva kontrolü artık StreamBuilder ile yapılıyor
     return StreamBuilder<Turnuva?>(
       stream: TurnuvaServisi().aktifTurnuvaStreami(),
       builder: (context, snapshot) {
@@ -887,12 +1086,10 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
             children: [
               Expanded(
                 child: (() {
-                  // ✅ GÜNCELLENDİ: Hero görünümü için de aktifMi kontrolü eklendi
                   final aktifOyun = _tumOyunlar
                       .where((o) => o.aktifMi && o.oyunKazanan == null)
                       .toList();
 
-                  // ✅ ARŞİV MODUNDA DEĞİLSE VE AKTİF TURNUVA YOKSA ÖZEL UYARI
                   if (!_gosterArsiv && !aktifTurnuvaVar) {
                     return Center(
                       child: Padding(
@@ -988,8 +1185,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
               ),
             ],
           ),
-
-          // ✅ BUTON KONTROLÜ: Stream'den gelen veriye göre anlık güncellenir
           floatingActionButton: Padding(
             padding: const EdgeInsets.only(bottom: 80.0),
             child: FloatingActionButton(
@@ -998,8 +1193,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                   : () async {
                       if (!mounted) return;
                       final safeCtx = context;
-
-                      // Çift güvenlik kontrolü
                       final aktifTurnuva = snapshot.data;
                       if (aktifTurnuva == null) {
                         ScaffoldMessenger.of(safeCtx).showSnackBar(
@@ -1012,7 +1205,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                         );
                         return;
                       }
-
                       final aktifSezon = await SezonServisi().aktifSezonBul();
                       if (aktifSezon == null) {
                         if (!safeCtx.mounted) return;
@@ -1026,8 +1218,6 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                         );
                         return;
                       }
-
-                      // ✅ GÜNCELLENDİ: Sadece aktif oyunları say
                       final buGruptaAktifOyunVar = _tumOyunlar.any(
                         (o) => o.aktifMi && o.oyunKazanan == null,
                       );
@@ -1042,12 +1232,10 @@ class _OyunlarSayfasiState extends State<OyunlarSayfasi> {
                         );
                         return;
                       }
-
                       if (!safeCtx.mounted) return;
                       final guncelOyuncular = await OyunServisi()
                           .tumOyunculariGetir();
                       if (!safeCtx.mounted) return;
-
                       final turnuvaList = [
                         TurBilgisi(
                           id: aktifTurnuva.id,

@@ -1,7 +1,7 @@
 // lib/pages/turnuva/turnuva_detay_widgets.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:yaz_boz/theme/app_theme.dart'; // ✅ YENİ IMPORT
+import 'package:yaz_boz/theme/app_theme.dart';
 
 /// Numara Rozeti
 Widget turnuvaNumaraRozeti(
@@ -261,7 +261,7 @@ Widget turnuvaAksiyonKapsul({
   );
 }
 
-/// Oyun Kartı
+// ✅✅ GÜNCELLENDİ: OYUN KARTI ESNİK YAPIDA (OVERFLOW SORUNU ÇÖZÜLDÜ) ✅✅
 Widget turnuvaOyunKarti(DocumentSnapshot doc, int index) {
   final d = doc.data() as Map<String, dynamic>? ?? {};
   final kaybeden = d['oyunKaybeden']?.toString();
@@ -293,6 +293,8 @@ Widget turnuvaOyunKarti(DocumentSnapshot doc, int index) {
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.center, // Dikey hizalama merkeze alındı
             children: [
               Container(
                 width: 40,
@@ -319,6 +321,7 @@ Widget turnuvaOyunKarti(DocumentSnapshot doc, int index) {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min, // İçeriğe göre boyutlan
                   children: [
                     Row(
                       children: [
@@ -338,13 +341,14 @@ Widget turnuvaOyunKarti(DocumentSnapshot doc, int index) {
                       ],
                     ),
                     const SizedBox(height: 4),
+                    // Oyuncu isimleri uzunsa alt satıra geçebilsin
                     Text(
                       d['oyuncu']?.toString() ?? '',
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
                       ),
-                      maxLines: 1,
+                      maxLines: 2, // Tek satır yerine iki satıra izin ver
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
